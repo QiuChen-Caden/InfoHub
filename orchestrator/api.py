@@ -1,11 +1,15 @@
 """InfoHub REST API — 轻量 FastAPI 层，读取 pipeline 产出的数据"""
 
 import os
+import re
 from contextlib import contextmanager
 from datetime import datetime
+from pathlib import Path
 from typing import List, Optional
 
+import yaml
 from fastapi import FastAPI, Query, HTTPException
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 app = FastAPI(title="InfoHub API", version="0.1.0")
@@ -20,7 +24,6 @@ def _get_conn():
         return psycopg2.connect(db_url), True
     else:
         import sqlite3
-        from pathlib import Path
         db_path = os.environ.get("SQLITE_PATH", "/app/output/infohub.db")
         return sqlite3.connect(db_path), False
 
@@ -177,3 +180,72 @@ def health():
         return {"status": "ok"}
     except Exception as e:
         raise HTTPException(status_code=503, detail=str(e))
+
+
+# ---- 配置端点 ----
+
+def _mask(val: str) -> str:
+    """脱敏：保留前4字符，其余用 * 替代"""
+    if not val or len(val) <= 4:
+        return "****"
+    return val[:4] + "*" * (len(val) - 4)
+
+
+@app.get("/api/config")
+def get_config():
+    """返回脱敏后的配置信息"""
+    config_dir = Path(os.environ.get("CONFIG_DIR", "/app/config"))
+    config_path = config_dir / "config.yaml"
+    interests_path = config_dir / "interests.txt"
+
+    if not config_path.exists():
+        raise HTTPException(status_code=404, detail="config.yaml not found")
+
+    raw = config_path.read_text(encoding="utf-8")
+    # 解析环境变量占位符
+    def _resolve(m: re.Match) -> str:
+        var, default = m.group(1), m.group(3) or ""
+        return os.environ.get(var, default)
+    resolved = re.sub(r"\$\{(\w+)(:-([^}]*))?\}", _resolve, raw)
+    cfg = yaml.safe_load(resolved)
+
+    interests: list[str] = []
+    if interests_path.exists():
+        interests = [l.strip() for l in interests_path.read_text(encoding="utf-8").splitlines() if l.strip()]
+
+    # 检测已配置的通知渠道
+    notif = cfg.get("notification", {})
+    channels = []
+    channel_keys = {
+        "telegram_bot_token": "Telegram",
+        "feishu_webhook_url": "Feishu",
+        "dingtalk_webhook_url": "DingTalk",
+        "email_from": "Email",
+        "slack_webhook_url": "Slack",
+    }
+    for key, name in channel_keys.items():
+        if notif.get(key):
+            channels.append(name)
+
+    ai = cfg.get("ai", {})
+    return {
+        "platforms": cfg.get("platforms", []),
+        "interests": interests,
+        "ai": {
+            "model": ai.get("model", ""),
+            "timeout": ai.get("timeout", 0),
+            "max_tokens": ai.get("max_tokens", 0),
+            "batch_size": ai.get("batch_size", 0),
+            "min_score": ai.get("min_score", 0),
+            "summary_enabled": ai.get("summary_enabled", False),
+        },
+        "notification": {"channels": channels},
+        "cron_schedule": cfg.get("cron_schedule", ""),
+    }
+
+
+# ---- 静态文件（SPA）——放在最后，API 路由优先匹配 ----
+
+_frontend_dir = Path("/app/frontend")
+if _frontend_dir.exists():
+    app.mount("/", StaticFiles(directory=str(_frontend_dir), html=True), name="frontend")

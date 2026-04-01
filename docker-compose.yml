@@ -128,14 +128,17 @@ services:
   # ---- API 层 ----
   api:
     build:
-      context: ./orchestrator
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: Dockerfile.api
     restart: unless-stopped
     ports:
       - "8000:8000"
     environment:
       APP_MODE: api
       DATABASE_URL: "postgresql://infohub:${INFOHUB_DB_PASSWORD:-infohub_secret}@postgres:5432/infohub"
+      CONFIG_DIR: /app/config
+    volumes:
+      - ./config:/app/config:ro
     depends_on:
       postgres:
         condition: service_healthy
