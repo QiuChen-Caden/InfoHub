@@ -7,7 +7,7 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: miniflux
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-miniflux_secret}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: miniflux
     volumes:
       - postgres_data:/var/lib/postgresql/data
@@ -64,11 +64,11 @@ services:
     ports:
       - "8080:8080"
     environment:
-      DATABASE_URL: "postgres://miniflux:${POSTGRES_PASSWORD:-miniflux_secret}@postgres/miniflux?sslmode=disable"
+      DATABASE_URL: "postgres://miniflux:${POSTGRES_PASSWORD}@postgres/miniflux?sslmode=disable"
       RUN_MIGRATIONS: 1
       CREATE_ADMIN: 1
-      ADMIN_USERNAME: ${MINIFLUX_ADMIN:-admin}
-      ADMIN_PASSWORD: ${MINIFLUX_PASSWORD:-changeme123}
+      ADMIN_USERNAME: ${MINIFLUX_ADMIN}
+      ADMIN_PASSWORD: ${MINIFLUX_PASSWORD}
       POLLING_FREQUENCY: 30
       BATCH_SIZE: 50
       WORKER_POOL_SIZE: 8
@@ -96,7 +96,7 @@ services:
     restart: unless-stopped
     environment:
       APP_MODE: cron
-      DATABASE_URL: "postgresql://infohub:${INFOHUB_DB_PASSWORD:-infohub_secret}@postgres:5432/infohub"
+      DATABASE_URL: "postgresql://infohub:${INFOHUB_DB_PASSWORD}@postgres:5432/infohub"
       MINIFLUX_URL: "http://miniflux:8080"
       MINIFLUX_API_KEY: ${MINIFLUX_API_KEY}
       RSSHUB_URL: "http://rsshub:1200"
@@ -135,10 +135,27 @@ services:
       - "8000:8000"
     environment:
       APP_MODE: api
-      DATABASE_URL: "postgresql://infohub:${INFOHUB_DB_PASSWORD:-infohub_secret}@postgres:5432/infohub"
+      DATABASE_URL: "postgresql://infohub:${INFOHUB_DB_PASSWORD}@postgres:5432/infohub"
       CONFIG_DIR: /app/config
+      MINIFLUX_URL: "http://miniflux:8080"
+      MINIFLUX_API_KEY: ${MINIFLUX_API_KEY}
+      RSSHUB_URL: "http://rsshub:1200"
+      AI_API_KEY: ${AI_API_KEY}
+      AI_MODEL: ${AI_MODEL:-deepseek/deepseek-chat}
+      AI_API_BASE: ${AI_API_BASE:-}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
+      FEISHU_WEBHOOK_URL: ${FEISHU_WEBHOOK_URL:-}
+      DINGTALK_WEBHOOK_URL: ${DINGTALK_WEBHOOK_URL:-}
+      EMAIL_FROM: ${EMAIL_FROM:-}
+      EMAIL_PASSWORD: ${EMAIL_PASSWORD:-}
+      EMAIL_TO: ${EMAIL_TO:-}
+      SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL:-}
+      OBSIDIAN_VAULT_PATH: /obsidian
     volumes:
       - ./config:/app/config:ro
+      - ./output:/app/output
+      - ${OBSIDIAN_VAULT_PATH:-./obsidian_output}:/obsidian
     depends_on:
       postgres:
         condition: service_healthy

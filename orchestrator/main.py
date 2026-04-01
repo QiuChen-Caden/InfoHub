@@ -9,6 +9,7 @@ InfoHub Orchestrator 主流程 v2
 """
 
 import logging
+import os
 from datetime import datetime, timezone, timedelta
 
 from config_loader import load_config
@@ -27,7 +28,7 @@ logging.basicConfig(
 )
 log = logging.getLogger("infohub")
 
-TZ = timezone(timedelta(hours=8))
+TZ = timezone(timedelta(hours=int(os.environ.get("TZ_OFFSET", "8"))))
 
 
 def run():

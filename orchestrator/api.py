@@ -2,6 +2,8 @@
 
 import os
 import re
+import subprocess
+import threading
 from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
@@ -9,10 +11,21 @@ from typing import List, Optional
 
 import yaml
 from fastapi import FastAPI, Query, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 app = FastAPI(title="InfoHub API", version="0.1.0")
+
+# ---- CORS ----
+_cors_origins = os.environ.get("CORS_ORIGINS", "*")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[o.strip() for o in _cors_origins.split(",")],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 # ---- DB 连接 ----
@@ -81,7 +94,12 @@ def list_news(
     limit: int = Query(50, ge=1, le=500),
     offset: int = Query(0, ge=0),
     source_type: Optional[str] = Query(None),
+    source: Optional[str] = Query(None),
     tag: Optional[str] = Query(None),
+    min_score: Optional[float] = Query(None, ge=0, le=1),
+    max_score: Optional[float] = Query(None, ge=0, le=1),
+    start_date: Optional[str] = Query(None),
+    end_date: Optional[str] = Query(None),
 ):
     """查询新闻列表，支持分页和筛选"""
     with get_db() as (conn, is_pg):
@@ -92,9 +110,24 @@ def list_news(
         if source_type:
             conditions.append(f"source_type = {ph}")
             params.append(source_type)
+        if source:
+            conditions.append(f"source = {ph}")
+            params.append(source)
         if tag:
             conditions.append(f"tags LIKE {ph}")
             params.append(f"%{tag}%")
+        if min_score is not None:
+            conditions.append(f"score >= {ph}")
+            params.append(min_score)
+        if max_score is not None:
+            conditions.append(f"score <= {ph}")
+            params.append(max_score)
+        if start_date:
+            conditions.append(f"created_at >= {ph}")
+            params.append(start_date)
+        if end_date:
+            conditions.append(f"created_at <= {ph}")
+            params.append(end_date)
 
         if conditions:
             sql += " WHERE " + " AND ".join(conditions)
@@ -115,6 +148,17 @@ def list_news(
         )
         for r in rows
     ]
+
+
+@app.get("/api/news/sources")
+def list_sources():
+    """返回所有不重复的 source 值"""
+    with get_db() as (conn, is_pg):
+        cur = conn.cursor()
+        cur.execute("SELECT DISTINCT source FROM news ORDER BY source")
+        rows = cur.fetchall()
+        cur.close()
+    return [r[0] for r in rows]
 
 
 @app.get("/api/runs", response_model=List[RunOut])
@@ -202,10 +246,13 @@ def get_config():
         raise HTTPException(status_code=404, detail="config.yaml not found")
 
     raw = config_path.read_text(encoding="utf-8")
-    # 解析环境变量占位符
+    # 解析环境变量占位符，对含 YAML 特殊字符的值加引号
     def _resolve(m: re.Match) -> str:
         var, default = m.group(1), m.group(3) or ""
-        return os.environ.get(var, default)
+        val = os.environ.get(var, default)
+        if val and any(c in val for c in '*{}[]&!|>%@`'):
+            return '"' + val.replace('"', '\\"') + '"'
+        return val
     resolved = re.sub(r"\$\{(\w+)(:-([^}]*))?\}", _resolve, raw)
     cfg = yaml.safe_load(resolved)
 
@@ -242,6 +289,52 @@ def get_config():
         "notification": {"channels": channels},
         "cron_schedule": cfg.get("cron_schedule", ""),
     }
+
+
+# ---- 手动触发运行 ----
+
+_run_lock = threading.Lock()
+_run_status = {"running": False, "last_error": "", "last_triggered": ""}
+
+
+@app.get("/api/trigger/status")
+def trigger_status():
+    """查询当前触发状态"""
+    return _run_status
+
+
+@app.post("/api/trigger")
+def trigger_run():
+    """手动触发一次 pipeline 运行（后台执行）"""
+
+    def _do_run():
+        try:
+            result = subprocess.run(
+                ["python", "main.py"],
+                cwd="/app",
+                capture_output=True,
+                text=True,
+                timeout=600,
+            )
+            if result.returncode != 0:
+                _run_status["last_error"] = result.stderr[-500:] if result.stderr else "Unknown error"
+        except subprocess.TimeoutExpired:
+            _run_status["last_error"] = "Run timed out (600s)"
+        except Exception as e:
+            _run_status["last_error"] = str(e)
+        finally:
+            _run_status["running"] = False
+
+    with _run_lock:
+        if _run_status["running"]:
+            raise HTTPException(status_code=409, detail="A run is already in progress")
+        _run_status["running"] = True
+        _run_status["last_error"] = ""
+        _run_status["last_triggered"] = datetime.now().isoformat()
+        thread = threading.Thread(target=_do_run, daemon=True)
+        thread.start()
+
+    return {"message": "Run triggered", "triggered_at": _run_status["last_triggered"]}
 
 
 # ---- 静态文件（SPA）——放在最后，API 路由优先匹配 ----
