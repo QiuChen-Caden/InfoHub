@@ -11,6 +11,7 @@ services:
       POSTGRES_DB: miniflux
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./init-db.sh:/docker-entrypoint-initdb.d/init-infohub.sh:ro
     healthcheck:
       test: ["CMD", "pg_isready", "-U", "miniflux"]
       interval: 10s
@@ -94,6 +95,7 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     environment:
+      DATABASE_URL: "postgresql://infohub:${INFOHUB_DB_PASSWORD:-infohub_secret}@postgres:5432/infohub"
       MINIFLUX_URL: "http://miniflux:8080"
       MINIFLUX_API_KEY: ${MINIFLUX_API_KEY}
       RSSHUB_URL: "http://rsshub:1200"
@@ -115,8 +117,12 @@ services:
       - ./output:/app/output
       - ${OBSIDIAN_VAULT_PATH:-./obsidian_output}:/obsidian
     depends_on:
-      - miniflux
-      - rsshub
+      postgres:
+        condition: service_healthy
+      miniflux:
+        condition: service_healthy
+      rsshub:
+        condition: service_started
 
 volumes:
   postgres_data:

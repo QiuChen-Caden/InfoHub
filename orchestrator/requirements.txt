@@ -6,3 +6,4 @@ tenacity==8.5.0
 feedparser==6.0.12
 schedule==1.2.2
 miniflux==0.0.18
+psycopg2-binary==2.9.10
