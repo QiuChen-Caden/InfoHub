@@ -19,7 +19,8 @@ class ObsidianExporter:
         self.inbox = Path(vault_path) / "00_Inbox"
         self.inbox.mkdir(parents=True, exist_ok=True)
 
-    def export(self, items: List[NewsItem], now: datetime):
+    def export(self, items: List[NewsItem], now: datetime,
+               summary: str = ""):
         date_str = now.strftime("%Y-%m-%d")
         time_str = now.strftime("%H-%M")
         filename = f"{date_str} - InfoHub {time_str}.md"
@@ -38,8 +39,8 @@ class ObsidianExporter:
             "",
         ]
 
-        if items and items[0].summary:
-            lines.extend(["## AI 分析总览", "", items[0].summary, ""])
+        if summary:
+            lines.extend(["## AI 分析总览", "", summary, ""])
 
         for tag, tag_items in by_tag.items():
             lines.append(f"## {tag}")
@@ -73,7 +74,8 @@ class HTMLExporter:
         self.output_dir = Path(output_dir) / "html"
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
-    def generate(self, items: List[NewsItem], now: datetime):
+    def generate(self, items: List[NewsItem], now: datetime,
+                 summary: str = ""):
         date_str = now.strftime("%Y-%m-%d")
         time_str = now.strftime("%H-%M")
         day_dir = self.output_dir / date_str
@@ -88,14 +90,14 @@ class HTMLExporter:
         # 目录导航
         nav = self._nav_html(by_tag)
         # AI 摘要
-        summary = self._summary_html(items)
+        summary_html = self._summary_html(summary)
         # 内容区
         sections = self._sections_html(by_tag)
         # 来源筛选器
         filters = self._filter_html(sources)
 
         html = self._template(date_str, time_str, stats, nav,
-                              filters, summary, sections)
+                              filters, summary_html, sections)
 
         filepath.write_text(html, encoding="utf-8")
         latest_dir = self.output_dir / "latest"
@@ -134,12 +136,12 @@ class HTMLExporter:
         )
         return f'<div class="filters"><b>来源筛选:</b> {opts}</div>'
 
-    def _summary_html(self, items):
-        if not items or not items[0].summary:
+    def _summary_html(self, summary: str):
+        if not summary:
             return ""
         return (f'<details class="summary" open>'
                 f'<summary><b>AI 分析</b></summary>'
-                f'<pre>{escape(items[0].summary)}</pre></details>')
+                f'<pre>{escape(summary)}</pre></details>')
 
     def _sections_html(self, by_tag):
         parts = []

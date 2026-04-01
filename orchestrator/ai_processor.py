@@ -93,10 +93,10 @@ class AIProcessor:
 
         return matched
 
-    def generate_summaries(self, items: List[NewsItem]):
-        """为匹配条目生成 AI 摘要"""
+    def generate_summaries(self, items: List[NewsItem]) -> str:
+        """为匹配条目生成 AI 摘要，返回摘要文本"""
         if not self.api_key:
-            return
+            return ""
 
         titles = "\n".join(
             f"- [{it.source}] {it.title} (标签: {','.join(it.tags)})"
@@ -112,11 +112,10 @@ class AIProcessor:
         )
 
         try:
-            summary = self._call_llm(system, titles)
-            if items:
-                items[0].summary = summary
+            return self._call_llm(system, titles)
         except Exception as e:
             log.error(f"AI 摘要失败: {e}")
+            return ""
 
     def translate(self, text: str, target_lang: str = "中文") -> str:
         """AI 翻译 — 仅翻译标题，不解释"""

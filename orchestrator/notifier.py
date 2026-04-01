@@ -39,9 +39,10 @@ class Notifier:
         self.config = config
         self.batch_interval = config.get("batch_interval", 2)
 
-    def send(self, items: List[NewsItem], now: datetime) -> Tuple[int, int]:
+    def send(self, items: List[NewsItem], now: datetime,
+             summary: str = "") -> Tuple[int, int]:
         """发送到所有已配置渠道，返回 (成功数, 失败数)"""
-        message = self._format_message(items, now)
+        message = self._format_message(items, now, summary=summary)
         success, fail = 0, 0
 
         channels = [
@@ -70,7 +71,8 @@ class Notifier:
 
         return success, fail
 
-    def _format_message(self, items: List[NewsItem], now: datetime) -> str:
+    def _format_message(self, items: List[NewsItem], now: datetime,
+                        summary: str = "") -> str:
         lines = [f"InfoHub {now.strftime('%m-%d %H:%M')} ({len(items)} 条)\n"]
 
         by_tag: dict = {}
@@ -86,8 +88,8 @@ class Notifier:
                 if it.url:
                     lines.append(f"  {it.url}")
 
-        if items and items[0].summary:
-            lines.append(f"\n---\nAI 分析\n{items[0].summary}")
+        if summary:
+            lines.append(f"\n---\nAI 分析\n{summary}")
 
         return "\n".join(lines)
 

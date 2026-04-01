@@ -59,6 +59,8 @@ def run():
 
     if not new_items:
         log.info("无新增内容，跳过处理")
+        # 即使无新增，也要标记 Miniflux 已读，否则未读队列永远排不空
+        _mark_miniflux_read(mx, rss_items)
         db.finish_run(run_id,
                       hotlist_count=len(hotlist_items),
                       rss_count=len(rss_items),
@@ -85,8 +87,9 @@ def run():
             log.info("翻译完成")
 
     # ---- 6. AI 摘要 ----
+    summary = ""
     if matched and config.get("ai", {}).get("summary_enabled", True):
-        ai.generate_summaries(matched)
+        summary = ai.generate_summaries(matched)
         log.info("AI 摘要生成完成")
 
     # ---- 7. 存储 ----
@@ -98,32 +101,31 @@ def run():
     if matched:
         # 推送通知
         notifier = Notifier(config.get("notification", {}))
-        success, fail = notifier.send(matched, now)
-        if success > 0:
+        success, fail = notifier.send(matched, now, summary=summary)
+        if success > 0 and fail == 0:
             db.mark_pushed([it.id for it in matched])
             pushed_count = len(matched)
             log.info(f"推送成功: {success} 个渠道")
-        if fail > 0:
-            errors.append(f"推送失败: {fail} 个渠道")
-            log.warning(f"推送失败: {fail} 个渠道")
+        elif success > 0 and fail > 0:
+            # 部分渠道成功：不标记 pushed，下轮可补发失败渠道
+            errors.append(f"推送部分失败: {success} 成功, {fail} 失败")
+            log.warning(f"推送部分失败: {success} 成功, {fail} 失败，未标记 pushed 以便补发")
+        elif fail > 0:
+            errors.append(f"推送全部失败: {fail} 个渠道")
+            log.error(f"推送全部失败: {fail} 个渠道")
 
         # HTML 报告
         html_exp = HTMLExporter(config["output_dir"])
-        html_exp.generate(matched, now)
+        html_exp.generate(matched, now, summary=summary)
 
         # Obsidian 导出
         vault_path = config.get("obsidian_vault_path")
         if vault_path:
             obs_exp = ObsidianExporter(vault_path)
-            obs_exp.export(matched, now)
+            obs_exp.export(matched, now, summary=summary)
 
     # ---- 9. 标记 Miniflux 已读 ----
-    miniflux_ids = [
-        getattr(item, '_miniflux_id', None) for item in rss_items
-    ]
-    miniflux_ids = [i for i in miniflux_ids if i is not None]
-    if miniflux_ids:
-        mx.mark_as_read(miniflux_ids)
+    _mark_miniflux_read(mx, rss_items)
 
     # ---- 10. 记录运行结果 ----
     db.finish_run(run_id,
@@ -147,6 +149,16 @@ def _is_english(text: str) -> bool:
         return False
     ascii_count = sum(1 for c in text if c.isascii() and c.isalpha())
     return ascii_count / max(len(text), 1) > 0.6
+
+
+def _mark_miniflux_read(mx: MinifluxClient, rss_items):
+    """提取 Miniflux entry ID 并标记已读"""
+    miniflux_ids = [
+        getattr(item, '_miniflux_id', None) for item in rss_items
+    ]
+    miniflux_ids = [i for i in miniflux_ids if i is not None]
+    if miniflux_ids:
+        mx.mark_as_read(miniflux_ids)
 
 
 if __name__ == "__main__":

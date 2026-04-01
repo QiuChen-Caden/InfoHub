@@ -64,14 +64,16 @@ class MinifluxClient:
         if not self._available or not entry_ids:
             return
         try:
-            requests.put(
+            resp = requests.put(
                 f"{self.base_url}/v1/entries",
                 headers=self.headers,
                 json={"entry_ids": entry_ids, "status": "read"},
                 timeout=30,
             )
+            resp.raise_for_status()
+            log.info(f"已标记 {len(entry_ids)} 条 Miniflux 条目为已读")
         except Exception as e:
-            log.error(f"标记已读失败: {e}")
+            log.error(f"标记已读失败 ({len(entry_ids)} 条): {e}")
 
     def create_feed(self, feed_url: str, category_id: int) -> int:
         """创建订阅源，返回 feed_id"""
