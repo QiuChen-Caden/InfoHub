@@ -95,6 +95,7 @@ services:
       dockerfile: Dockerfile
     restart: unless-stopped
     environment:
+      APP_MODE: cron
       DATABASE_URL: "postgresql://infohub:${INFOHUB_DB_PASSWORD:-infohub_secret}@postgres:5432/infohub"
       MINIFLUX_URL: "http://miniflux:8080"
       MINIFLUX_API_KEY: ${MINIFLUX_API_KEY}
@@ -123,6 +124,21 @@ services:
         condition: service_healthy
       rsshub:
         condition: service_started
+
+  # ---- API 层 ----
+  api:
+    build:
+      context: ./orchestrator
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      APP_MODE: api
+      DATABASE_URL: "postgresql://infohub:${INFOHUB_DB_PASSWORD:-infohub_secret}@postgres:5432/infohub"
+    depends_on:
+      postgres:
+        condition: service_healthy
 
 volumes:
   postgres_data:
