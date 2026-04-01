@@ -14,8 +14,8 @@ export default function Usage() {
     api.runs(50).then((r) => setRuns([...r].reverse())).catch((e) => setError(e.message));
   }, []);
 
-  if (error) return <p className="text-red-400">Error: {error}</p>;
-  if (!runs.length) return <p className="text-muted">Loading...</p>;
+  if (error) return <p className="text-negative">ERR: {error}</p>;
+  if (!runs.length) return <p className="text-accent/50">LOADING...</p>;
 
   const data = runs.map((r) => ({
     run: `#${r.id}`,
@@ -25,45 +25,47 @@ export default function Usage() {
     pushed: r.pushed_count,
   }));
 
-  const axisStyle = { fill: '#8b949e', fontSize: 11 };
+  const axisStyle = { fill: '#FF8C00', fontSize: 10 };
 
   return (
-    <div className="space-y-6">
-      <h2 className="text-lg font-semibold">Usage Trends</h2>
-
-      <div className="bg-card border border-border rounded-lg p-4">
-        <h3 className="text-sm text-muted uppercase mb-4">Hotlist / RSS / Matched per Run</h3>
-        <ResponsiveContainer width="100%" height={300}>
-          <LineChart data={data}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#21262d" />
-            <XAxis dataKey="run" tick={axisStyle} />
-            <YAxis tick={axisStyle} />
-            <Tooltip
-              contentStyle={{ backgroundColor: '#161b22', border: '1px solid #21262d', borderRadius: 6 }}
-              labelStyle={{ color: '#c9d1d9' }}
-            />
-            <Legend />
-            <Line type="monotone" dataKey="hotlist" stroke="#58a6ff" strokeWidth={2} dot={false} />
-            <Line type="monotone" dataKey="rss" stroke="#3fb950" strokeWidth={2} dot={false} />
-            <Line type="monotone" dataKey="matched" stroke="#d2a8ff" strokeWidth={2} dot={false} />
-          </LineChart>
-        </ResponsiveContainer>
+    <div className="space-y-2">
+      <div className="bb-panel">
+        <div className="bb-panel-header">HOTLIST / RSS / MATCHED PER RUN</div>
+        <div className="bb-panel-body">
+          <ResponsiveContainer width="100%" height={280}>
+            <LineChart data={data}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#333333" />
+              <XAxis dataKey="run" tick={axisStyle} />
+              <YAxis tick={axisStyle} />
+              <Tooltip
+                contentStyle={{ backgroundColor: '#0a0a0a', border: '1px solid #333333' }}
+                labelStyle={{ color: '#FF8C00' }}
+              />
+              <Legend />
+              <Line type="monotone" dataKey="hotlist" stroke="#FF8C00" strokeWidth={2} dot={false} />
+              <Line type="monotone" dataKey="rss" stroke="#00FF00" strokeWidth={2} dot={false} />
+              <Line type="monotone" dataKey="matched" stroke="#00FFFF" strokeWidth={2} dot={false} />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
       </div>
 
-      <div className="bg-card border border-border rounded-lg p-4">
-        <h3 className="text-sm text-muted uppercase mb-4">Pushed Count per Run</h3>
-        <ResponsiveContainer width="100%" height={250}>
-          <BarChart data={data}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#21262d" />
-            <XAxis dataKey="run" tick={axisStyle} />
-            <YAxis tick={axisStyle} />
-            <Tooltip
-              contentStyle={{ backgroundColor: '#161b22', border: '1px solid #21262d', borderRadius: 6 }}
-              labelStyle={{ color: '#c9d1d9' }}
-            />
-            <Bar dataKey="pushed" fill="#f0883e" radius={[4, 4, 0, 0]} />
-          </BarChart>
-        </ResponsiveContainer>
+      <div className="bb-panel">
+        <div className="bb-panel-header">PUSHED COUNT PER RUN</div>
+        <div className="bb-panel-body">
+          <ResponsiveContainer width="100%" height={240}>
+            <BarChart data={data}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#333333" />
+              <XAxis dataKey="run" tick={axisStyle} />
+              <YAxis tick={axisStyle} />
+              <Tooltip
+                contentStyle={{ backgroundColor: '#0a0a0a', border: '1px solid #333333' }}
+                labelStyle={{ color: '#FF8C00' }}
+              />
+              <Bar dataKey="pushed" fill="#FF8C00" />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
       </div>
     </div>
   );

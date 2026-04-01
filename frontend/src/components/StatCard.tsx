@@ -6,10 +6,12 @@ interface Props {
 
 export default function StatCard({ label, value, sub }: Props) {
   return (
-    <div className="bg-card border border-border rounded-lg p-4">
-      <p className="text-xs text-muted uppercase tracking-wide">{label}</p>
-      <p className="text-2xl font-bold text-text mt-1">{value}</p>
-      {sub && <p className="text-xs text-muted mt-1">{sub}</p>}
+    <div className="bb-panel">
+      <div className="bb-panel-header">{label}</div>
+      <div className="bb-panel-body">
+        <p className="text-xl font-bold text-accent">{value}</p>
+        {sub && <p className="text-xs text-accent/70 mt-0.5">{sub}</p>}
+      </div>
     </div>
   );
 }

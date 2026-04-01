@@ -10,69 +10,65 @@ export default function Config() {
     api.config().then(setCfg).catch((e) => setError(e.message));
   }, []);
 
-  if (error) return <p className="text-red-400">Error: {error}</p>;
-  if (!cfg) return <p className="text-muted">Loading...</p>;
-
-  const Section = ({ title, children }: { title: string; children: React.ReactNode }) => (
-    <div className="bg-card border border-border rounded-lg p-4">
-      <h3 className="text-sm font-semibold text-accent mb-3">{title}</h3>
-      {children}
-    </div>
-  );
+  if (error) return <p className="text-negative">ERR: {error}</p>;
+  if (!cfg) return <p className="text-accent/50">LOADING...</p>;
 
   return (
-    <div className="space-y-4">
-      <h2 className="text-lg font-semibold">Configuration</h2>
+    <div className="grid md:grid-cols-2 gap-2">
+      <div className="bb-panel">
+        <div className="bb-panel-header">MONITORED PLATFORMS</div>
+        <div className="bb-panel-body flex flex-wrap gap-1">
+          {cfg.platforms.map((p) => (
+            <span key={p} className="px-1 py-0.5 border border-accent text-accent text-xs">
+              [ {p.toUpperCase()} ]
+            </span>
+          ))}
+        </div>
+      </div>
 
-      <div className="grid md:grid-cols-2 gap-4">
-        <Section title="Monitored Platforms">
-          <div className="flex flex-wrap gap-2">
-            {cfg.platforms.map((p) => (
-              <span key={p} className="px-2 py-1 bg-accent/10 text-accent text-xs rounded">
-                {p}
-              </span>
-            ))}
-          </div>
-        </Section>
+      <div className="bb-panel">
+        <div className="bb-panel-header">INTEREST TAGS</div>
+        <div className="bb-panel-body flex flex-wrap gap-1">
+          {cfg.interests.map((t) => (
+            <span key={t} className="px-1 py-0.5 border border-positive text-positive text-xs">
+              [ {t.toUpperCase()} ]
+            </span>
+          ))}
+        </div>
+      </div>
 
-        <Section title="Interest Tags">
-          <div className="flex flex-wrap gap-2">
-            {cfg.interests.map((t) => (
-              <span key={t} className="px-2 py-1 bg-green-900/30 text-green-400 text-xs rounded">
-                {t}
-              </span>
-            ))}
-          </div>
-        </Section>
+      <div className="bb-panel">
+        <div className="bb-panel-header">AI CONFIGURATION</div>
+        <div className="bb-panel-body text-xs space-y-0.5">
+          <div className="flex"><span className="text-accent/70 w-28">MODEL:</span><span>{cfg.ai.model}</span></div>
+          <div className="flex"><span className="text-accent/70 w-28">TIMEOUT:</span><span>{cfg.ai.timeout}s</span></div>
+          <div className="flex"><span className="text-accent/70 w-28">MAX_TOKENS:</span><span>{cfg.ai.max_tokens}</span></div>
+          <div className="flex"><span className="text-accent/70 w-28">BATCH_SIZE:</span><span>{cfg.ai.batch_size}</span></div>
+          <div className="flex"><span className="text-accent/70 w-28">MIN_SCORE:</span><span>{cfg.ai.min_score}</span></div>
+          <div className="flex"><span className="text-accent/70 w-28">SUMMARY:</span><span className={cfg.ai.summary_enabled ? 'text-positive' : 'text-negative'}>{cfg.ai.summary_enabled ? 'ENABLED' : 'DISABLED'}</span></div>
+        </div>
+      </div>
 
-        <Section title="AI Configuration">
-          <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-            <dt className="text-muted">Model</dt><dd>{cfg.ai.model}</dd>
-            <dt className="text-muted">Timeout</dt><dd>{cfg.ai.timeout}s</dd>
-            <dt className="text-muted">Max Tokens</dt><dd>{cfg.ai.max_tokens}</dd>
-            <dt className="text-muted">Batch Size</dt><dd>{cfg.ai.batch_size}</dd>
-            <dt className="text-muted">Min Score</dt><dd>{cfg.ai.min_score}</dd>
-            <dt className="text-muted">Summary</dt><dd>{cfg.ai.summary_enabled ? 'Enabled' : 'Disabled'}</dd>
-          </dl>
-        </Section>
-
-        <Section title="Notification Channels">
+      <div className="bb-panel">
+        <div className="bb-panel-header">NOTIFICATION CHANNELS</div>
+        <div className="bb-panel-body flex flex-wrap gap-1">
           {cfg.notification.channels.length > 0 ? (
-            <div className="flex flex-wrap gap-2">
-              {cfg.notification.channels.map((c) => (
-                <span key={c} className="px-2 py-1 bg-yellow-900/30 text-yellow-400 text-xs rounded">
-                  {c}
-                </span>
-              ))}
-            </div>
+            cfg.notification.channels.map((c) => (
+              <span key={c} className="px-1 py-0.5 border border-link text-link text-xs">
+                [ {c.toUpperCase()} ]
+              </span>
+            ))
           ) : (
-            <p className="text-muted text-sm">No channels configured</p>
+            <span className="text-accent/50 text-xs">NO CHANNELS</span>
           )}
-        </Section>
+        </div>
+      </div>
 
-        <Section title="Schedule">
-          <p className="text-sm font-mono">{cfg.cron_schedule}</p>
-        </Section>
+      <div className="bb-panel md:col-span-2">
+        <div className="bb-panel-header">SCHEDULE</div>
+        <div className="bb-panel-body text-xs">
+          <span className="text-accent/70">CRON: </span>{cfg.cron_schedule}
+        </div>
       </div>
     </div>
   );

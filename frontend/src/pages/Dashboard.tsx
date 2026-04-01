@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { api } from '../api';
 import type { Stats, RunItem, NewsItem } from '../types';
 import StatCard from '../components/StatCard';
@@ -9,73 +9,119 @@ export default function Dashboard() {
   const [runs, setRuns] = useState<RunItem[]>([]);
   const [news, setNews] = useState<NewsItem[]>([]);
   const [error, setError] = useState('');
+  const [running, setRunning] = useState(false);
+  const [triggerMsg, setTriggerMsg] = useState('');
 
-  useEffect(() => {
+  const loadData = useCallback(() => {
     Promise.all([api.stats(), api.runs(5), api.news({ limit: 10 })])
       .then(([s, r, n]) => { setStats(s); setRuns(r); setNews(n); })
       .catch((e) => setError(e.message));
   }, []);
 
-  if (error) return <p className="text-red-400">Error: {error}</p>;
-  if (!stats) return <p className="text-muted">Loading...</p>;
+  useEffect(() => {
+    loadData();
+    api.triggerStatus().then((s) => setRunning(s.running)).catch(() => {});
+  }, [loadData]);
+
+  useEffect(() => {
+    if (!running) return;
+    const id = setInterval(() => {
+      api.triggerStatus().then((s) => {
+        if (!s.running) {
+          setRunning(false);
+          setTriggerMsg(s.last_error ? `ERR: ${s.last_error}` : 'RUN COMPLETE');
+          loadData();
+        }
+      });
+    }, 3000);
+    return () => clearInterval(id);
+  }, [running, loadData]);
+
+  const handleTrigger = () => {
+    setTriggerMsg('');
+    api.triggerRun()
+      .then(() => { setRunning(true); setTriggerMsg('RUN STARTED...'); })
+      .catch((e) => setTriggerMsg(e.message));
+  };
+
+  if (error) return <p className="text-negative">ERR: {error}</p>;
+  if (!stats) return <p className="text-accent/50">LOADING...</p>;
 
   return (
-    <div className="space-y-6">
-      <h2 className="text-lg font-semibold">Dashboard</h2>
-
-      {/* Stat cards */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
-        <StatCard label="Total News" value={stats.total_news} />
-        <StatCard label="Total Runs" value={stats.total_runs} />
-        <StatCard label="Latest Run" value={stats.latest_run?.replace('T', ' ').slice(0, 16) ?? '—'} />
-        <StatCard label="Hotlist" value={stats.hotlist_total} />
+    <div className="flex flex-col gap-2 h-full">
+      {/* Row 1: Stats + Trigger */}
+      <div className="grid grid-cols-6 gap-2 shrink-0">
+        <StatCard label="TOTAL NEWS" value={stats.total_news} />
+        <StatCard label="TOTAL RUNS" value={stats.total_runs} />
+        <StatCard label="LATEST RUN" value={stats.latest_run?.replace('T', ' ').slice(0, 16) ?? '—'} />
+        <StatCard label="HOTLIST" value={stats.hotlist_total} />
         <StatCard label="RSS" value={stats.rss_total} />
+        <div className="bb-panel flex flex-col">
+          <div className="bb-panel-header">CONTROL</div>
+          <div className="bb-panel-body flex-1 flex flex-col items-center justify-center gap-1">
+            <button
+              onClick={handleTrigger}
+              disabled={running}
+              className="px-3 py-1 text-xs font-bold bg-accent text-black hover:bg-accent/80 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {running ? '[ RUNNING... ]' : '[ TRIGGER RUN ]'}
+            </button>
+            {triggerMsg && (
+              <span className={`text-xs ${triggerMsg.startsWith('ERR') ? 'text-negative' : 'text-positive'}`}>
+                {triggerMsg}
+              </span>
+            )}
+          </div>
+        </div>
       </div>
 
-      {/* Recent runs */}
-      <section>
-        <h3 className="text-sm font-semibold text-muted uppercase mb-3">Recent Runs</h3>
-        <div className="bg-card border border-border rounded-lg overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border text-left text-muted text-xs uppercase">
-                <th className="p-3">ID</th>
-                <th className="p-3">Started</th>
-                <th className="p-3">Matched</th>
-                <th className="p-3">Pushed</th>
-                <th className="p-3">Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {runs.map((r) => (
-                <tr key={r.id} className="border-b border-border/50">
-                  <td className="p-3">{r.id}</td>
-                  <td className="p-3 text-muted text-xs">{r.started_at.replace('T', ' ').slice(0, 16)}</td>
-                  <td className="p-3">{r.matched_count}</td>
-                  <td className="p-3">{r.pushed_count}</td>
-                  <td className="p-3">
-                    {r.errors ? (
-                      <span className="text-red-400 text-xs">Error</span>
-                    ) : r.finished_at ? (
-                      <span className="text-green-400 text-xs">Done</span>
-                    ) : (
-                      <span className="text-yellow-400 text-xs">Running</span>
-                    )}
-                  </td>
+      {/* Row 2: Runs + News side by side */}
+      <div className="grid grid-cols-2 gap-2 flex-1 min-h-0">
+        {/* Recent Runs */}
+        <div className="bb-panel flex flex-col min-h-0">
+          <div className="bb-panel-header">RECENT RUNS</div>
+          <div className="bb-panel-body flex-1 overflow-y-auto">
+            <table className="w-full text-xs">
+              <thead className="sticky top-0">
+                <tr className="bg-header-bg text-left text-accent text-xs uppercase">
+                  <th className="px-2 py-1">ID</th>
+                  <th className="px-2 py-1">STARTED</th>
+                  <th className="px-2 py-1">MTCH</th>
+                  <th className="px-2 py-1">PUSH</th>
+                  <th className="px-2 py-1">STATUS</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {runs.map((r, i) => (
+                  <tr key={r.id} className={i % 2 === 0 ? 'bg-card' : 'bg-bg'}>
+                    <td className="px-2 py-1">{r.id}</td>
+                    <td className="px-2 py-1 text-accent/70">{r.started_at.replace('T', ' ').slice(0, 16)}</td>
+                    <td className="px-2 py-1">{r.matched_count}</td>
+                    <td className="px-2 py-1">{r.pushed_count}</td>
+                    <td className="px-2 py-1">
+                      {r.errors ? (
+                        <span className="text-negative">ERR</span>
+                      ) : r.finished_at ? (
+                        <span className="text-positive">OK</span>
+                      ) : (
+                        <span className="text-accent">RUN</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
-      </section>
 
-      {/* Latest news */}
-      <section>
-        <h3 className="text-sm font-semibold text-muted uppercase mb-3">Latest News</h3>
-        <div className="bg-card border border-border rounded-lg p-4">
-          <NewsTable items={news} compact />
+        {/* Latest News */}
+        <div className="bb-panel flex flex-col min-h-0">
+          <div className="bb-panel-header">LATEST NEWS</div>
+          <div className="bb-panel-body flex-1 overflow-y-auto">
+            <NewsTable items={news} compact />
+          </div>
         </div>
-      </section>
+      </div>
     </div>
   );
 }
