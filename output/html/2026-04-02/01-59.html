@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>InfoHub 2026-04-02 01-59</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,system-ui,sans-serif;max-width:1000px;
+margin:0 auto;padding:20px;background:#0d1117;color:#c9d1d9}
+h1{color:#58a6ff;margin-bottom:16px;font-size:1.5em}
+h2{color:#8b949e;margin:20px 0 10px;border-bottom:1px solid #21262d;
+padding-bottom:6px;font-size:1.1em}
+.stats{display:flex;gap:12px;flex-wrap:wrap;margin:16px 0}
+.stat{background:#161b22;border:1px solid #21262d;border-radius:8px;
+padding:12px 16px;text-align:center;flex:1;min-width:80px}
+.stat .num{display:block;font-size:1.4em;font-weight:700;color:#58a6ff}
+.stat .label{font-size:.75em;color:#8b949e}
+.tag-nav{margin:12px 0;display:flex;flex-wrap:wrap;gap:6px}
+.nav-tag{background:#21262d;color:#c9d1d9;padding:4px 10px;
+border-radius:14px;font-size:.8em;text-decoration:none}
+.nav-tag:hover{background:#30363d}
+.filters{margin:12px 0;font-size:.8em;color:#8b949e}
+.filters label{margin-right:10px;cursor:pointer}
+.filters input{margin-right:3px}
+table{width:100%;border-collapse:collapse;margin-bottom:8px}
+th,td{padding:6px 10px;text-align:left;border-bottom:1px solid #21262d}
+th{color:#8b949e;font-weight:600;font-size:.85em}
+td{font-size:.9em}
+.src{color:#8b949e;white-space:nowrap}
+a{color:#58a6ff;text-decoration:none}
+a:hover{text-decoration:underline}
+.score{background:#1f6feb;color:#fff;padding:2px 8px;border-radius:10px;
+font-size:.75em}
+.summary{background:#161b22;padding:14px;border-radius:8px;margin:14px 0;
+border:1px solid #21262d}
+.summary pre{white-space:pre-wrap;line-height:1.6;margin-top:8px;
+font-size:.85em}
+tr.hidden{display:none}
+</style></head><body>
+<h1>InfoHub 2026-04-02 01-59</h1>
+<div class="stats">
+<div class="stat"><span class="num">120</span><span class="label">总条数</span></div>
+<div class="stat"><span class="num">9</span><span class="label">标签数</span></div>
+<div class="stat"><span class="num">51</span><span class="label">热榜</span></div>
+<div class="stat"><span class="num">69</span><span class="label">RSS</span></div>
+<div class="stat"><span class="num">83%</span><span class="label">平均相关度</span></div>
+<div class="stat"><span class="num">17</span><span class="label">来源数</span></div>
+</div>
+<nav class="tag-nav"><a href="#tag-中国科技公司" class="nav-tag">中国科技公司 (12)</a> <a href="#tag-金融市场" class="nav-tag">金融市场 (29)</a> <a href="#tag-全球科技巨头" class="nav-tag">全球科技巨头 (5)</a> <a href="#tag-AI与大模型" class="nav-tag">AI与大模型 (32)</a> <a href="#tag-航天探索" class="nav-tag">航天探索 (5)</a> <a href="#tag-芯片半导体" class="nav-tag">芯片半导体 (4)</a> <a href="#tag-智能汽车" class="nav-tag">智能汽车 (9)</a> <a href="#tag-地缘政治" class="nav-tag">地缘政治 (19)</a> <a href="#tag-开源项目" class="nav-tag">开源项目 (5)</a></nav>
+<div class="filters"><b>来源筛选:</b> <label><input type="checkbox" value="Top Links | Hacker News" checked onchange="filterSource()">Top Links | Hacker News (18)</label><label><input type="checkbox" value="财联社 - 电报" checked onchange="filterSource()">财联社 - 电报 (17)</label><label><input type="checkbox" value="财联社" checked onchange="filterSource()">财联社 (12)</label><label><input type="checkbox" value="36氪 - 快讯" checked onchange="filterSource()">36氪 - 快讯 (11)</label><label><input type="checkbox" value="IT之家-24 小时最热" checked onchange="filterSource()">IT之家-24 小时最热 (10)</label><label><input type="checkbox" value="B站热搜" checked onchange="filterSource()">B站热搜 (9)</label><label><input type="checkbox" value="掘金本周最热" checked onchange="filterSource()">掘金本周最热 (8)</label><label><input type="checkbox" value="百度热搜" checked onchange="filterSource()">百度热搜 (6)</label><label><input type="checkbox" value="知乎" checked onchange="filterSource()">知乎 (6)</label><label><input type="checkbox" value="华尔街见闻" checked onchange="filterSource()">华尔街见闻 (5)</label><label><input type="checkbox" value="抖音" checked onchange="filterSource()">抖音 (5)</label><label><input type="checkbox" value="贴吧" checked onchange="filterSource()">贴吧 (4)</label><label><input type="checkbox" value="知乎热榜" checked onchange="filterSource()">知乎热榜 (3)</label><label><input type="checkbox" value="微博" checked onchange="filterSource()">微博 (2)</label><label><input type="checkbox" value="少数派 -- Matrix" checked onchange="filterSource()">少数派 -- Matrix (2)</label><label><input type="checkbox" value="今日头条" checked onchange="filterSource()">今日头条 (1)</label><label><input type="checkbox" value="澎湃新闻" checked onchange="filterSource()">澎湃新闻 (1)</label></div>
+<details class="summary" open><summary><b>AI 分析</b></summary><pre>### 1. 核心热点与趋势
+*   **AI Agent（特别是AI编程）进入实战与“开源”新阶段**：Claude Code源码泄露事件引发全球技术社区深度拆解与学习热潮，标志着顶尖AI编程智能体从“黑盒”走向可被业界广泛研究、复刻的节点。AI编程工具（Cursor等）的普及正深刻改变开发范式。
+*   **地缘政治紧张局势出现关键缓和信号，驱动全球资产价格剧烈重估**：美伊双方释放结束冲突意愿，导致风险资产（全球股市，尤其是科技股）大涨，而避险资产（原油）重挫，黄金因美元走软和局势不确定性仍受追捧。市场交易逻辑从“避险”快速切换至“风险偏好回归”。
+*   **中国科技与制造领域呈现“冰火两重天”**：一方面，智能汽车（小米SU7交付、比亚迪销量、新势力回暖）与AI硬件概念表现强势，成为市场焦点；另一方面，光伏等新能源龙头股价深度回调，部分公司被监管立案，显示内部结构分化与监管趋严。
+*   **金融市场在宏观博弈中寻找方向**：美联储官员表态偏鹰（通胀进展缓慢），但市场更受地缘局势缓和提振。A股迎来“开门红”，但ETF规模缩水、存款利率下调、游资与量化博弈激烈，显示资金在谨慎中寻找结构性机会。巴菲特预警银行脆弱性并认为美股估值不便宜，为市场注入长期谨慎情绪。
+*   **全球科技巨头进入密集战略调整期**：SpaceX秘密筹备IPO，甲骨文大规模裁员，微软为Copilot添加“仅供娱乐”免责声明，OpenAI估值冲高，苹果AI功能在华遇阻。巨头们在AI军备竞赛、成本控制与地缘市场间进行关键布局。
+
+### 2. 值得关注的弱信号
+*   **“复古”消费与“平替”趋势**：有线耳机销量翻红，可能映射消费降级或特定场景（如音质、无延迟）的需求回归。
+*   **开源生态安全信任受挑战**：NPM包（Axios）遭投毒、GitHub撤回Copilot广告，显示开源供应链安全与商业化的矛盾加剧。
+*   **“内存涨价游戏”与囤货恐慌**：内存市场传闻降价与“雪崩”，反映半导体周期下行中渠道的焦虑情绪和价格博弈。
+*   **AI对普通职场人的“卷力”初现**：“凌晨3点上班，AI卷疯打工人”的贴吧话题，显示AI工具开始对工作强度与节奏产生切实压力，从开发者向更广泛职场渗透。
+
+### 3. 简要研判
+当前信息场呈现 **“技术革命加速”与“宏观不确定性缓和”双主线交织**的特征。**AI（特别是Agent）正从概念爆发期进入实战渗透与生态重构期**，其影响率先在编程领域显性化。同时，**中东地缘政治出现难得的“喘息窗口”**，驱动全球资本进行快速的仓位再平衡，但局势彻底明朗前，原油、黄金的波动仍会剧烈。国内方面，**科技自立与产业升级（汽车、AI硬件、电网）是明确的政策与市场主线**，但需警惕部分过热赛道（如光伏）的调整压力及整体金融市场的存量博弈特征。短期市场情绪受地缘利好提振，但中长期仍将回归美联储政策与企业盈利基本面。</pre></details>
+<section id="tag-中国科技公司"><h2>中国科技公司 (12)</h2><table><thead><tr><th>标题</th><th>来源</th><th>相关度</th></tr></thead><tbody><tr data-source="今日头条"><td><a href="https://www.toutiao.com/trending/7623658574400458267/" target="_blank" rel="noopener">雷军投的“中年人泡泡玛特”上市了</a></td><td class="src">今日头条</td><td><span class="score">80%</span></td></tr>
+<tr data-source="澎湃新闻"><td><a href="https://www.thepaper.cn/newsDetail_forward_32869662" target="_blank" rel="noopener">六年累计捐赠超34亿元！曾毓群再向母校上海交大一口气捐20亿元</a></td><td class="src">澎湃新闻</td><td><span class="score">80%</span></td></tr>
+<tr data-source="财联社"><td><a href="https://www.cls.cn/detail/2332385" target="_blank" rel="noopener">李强：持续扩大绿电供给，着力推进新型电网建设，加快能源结构调整优化</a></td><td class="src">财联社</td><td><span class="score">80%</span></td></tr>
+<tr data-source="财联社"><td><a href="https://www.cls.cn/detail/2332468" target="_blank" rel="noopener">今年第二批！宇树科技、中科宇航被抽中首发企业现场检查</a></td><td class="src">财联社</td><td><span class="score">85%</span></td></tr>
+<tr data-source="财联社"><td><a href="https://www.cls.cn/detail/2332240" target="_blank" rel="noopener">千亿光伏龙头5连跌！股价同期回调两成，近期高回撤权重盘点，这些方向占比较高</a></td><td class="src">财联社</td><td><span class="score">80%</span></td></tr>
+<tr data-source="财联社"><td><a href="https://www.cls.cn/detail/2332377" target="_blank" rel="noopener">央行等四部门联合召开科技金融工作交流推进会</a></td><td class="src">财联社</td><td><span class="score">80%</span></td></tr>
+<tr data-source="贴吧"><td><a href="https://tieba.baidu.com/hottopic/browse/hottopic?topic_id=28352600&amp;amp;topic_name=vivo%E5%86%B2%E9%AB%98%E6%97%A0%E5%BA%A6%2C%E5%AE%9A%E4%BB%B7%E6%8E%80%E7%BF%BB%E5%B8%82%E5%9C%BA" target="_blank" rel="noopener">vivo冲高无度,定价掀翻市场</a></td><td class="src">贴吧</td><td><span class="score">80%</span></td></tr>
+<tr data-source="36氪 - 快讯"><td><a href="https://www.36kr.com/newsflashes/3748256521142789" target="_blank" rel="noopener">欧菲光：2025年净利润4163.42万元，同比下降28.69%</a></td><td class="src">36氪 - 快讯</td><td><span class="score">80%</span></td></tr>
+<tr data-source="36氪 - 快讯"><td><a href="https://www.36kr.com/newsflashes/3748241858609926" target="_blank" rel="noopener">远东股份：3月中标/签约千万元以上合同订单合计为18.21亿元</a></td><td class="src">36氪 - 快讯</td><td><span class="score">75%</span></td></tr>
+<tr data-source="36氪 - 快讯"><td><a href="https://www.36kr.com/newsflashes/3748197265752582" target="_blank" rel="noopener">小鹏副总裁魏斌已于近期离职</a></td><td class="src">36氪 - 快讯</td><td><span class="score">80%</span></td></tr>
+<tr data-source="IT之家-24 小时最热"><td><a href="https://www.ithome.com/0/934/939.htm" target="_blank" rel="noopener">消息称国内所有安卓大厂本月都会涨价，老品新品手机平板都会上涨</a></td><td class="src">IT之家-24 小时最热</td><td><span class="score">80%</span></td></tr>
+<tr data-source="知乎热榜"><td><a href="https://www.zhihu.com/question/2021921598555398146" target="_blank" rel="noopener">国产「张雪机车」夺得 WSBK 两连冠，如何评价它的技术实力？会成为摩托车界的「比亚迪」吗？</a></td><td class="src">知乎热榜</td><td><span class="score">80%</span></td></tr>
+</tbody></table></section>
+<section id="tag-金融市场"><h2>金融市场 (29)</h2><table><thead><tr><th>标题</th><th>来源</th><th>相关度</th></tr></thead><tbody><tr data-source="百度热搜"><td><a href="https://www.baidu.com/s?wd=%E6%9C%89%E7%BA%BF%E8%80%B3%E6%9C%BA%E8%A2%AB%E6%B7%98%E6%B1%B010%E5%B9%B4%E7%BF%BB%E7%BA%A2+%E9%94%80%E9%87%8F%E6%9A%B4%E6%B6%A820%25" target="_blank" rel="noopener">有线耳机被淘汰10年翻红 销量暴涨20%</a></td><td class="src">百度热搜</td><td><span class="score">75%</span></td></tr>
+<tr data-source="百度热搜"><td><a href="https://www.baidu.com/s?wd=%E2%80%9C%E4%B8%AD%E5%9B%BD%E5%BA%8A%E5%9E%AB%E7%AC%AC%E4%B8%80%E8%82%A1%E2%80%9D%E8%A2%AB%E7%AB%8B%E6%A1%88" target="_blank" rel="noopener">“中国床垫第一股”被立案</a></td><td class="src">百度热搜</td><td><span class="score">70%</span></td></tr>
+<tr data-source="百度热搜"><td><a href="https://www.baidu.com/s?wd=%E7%BE%8E%E8%82%A1%E4%B8%89%E5%A4%A7%E6%8C%87%E6%95%B0%E9%AB%98%E5%BC%80+%E8%80%90%E5%85%8B%E8%B7%8C%E8%B6%8512%25" target="_blank" rel="noopener">美股三大指数高开 耐克跌超12%</a></td><td class="src">百度热搜</td><td><span class="score">85%</span></td></tr>
+<tr data-source="百度热搜"><td><a href="https://www.baidu.com/s?wd=%E9%BB%84%E9%87%91%E5%B9%B4%E5%86%85%E5%9B%9E%E6%92%A4%E8%BE%BE26%25" target="_blank" rel="noopener">黄金年内回撤达26%</a></td><td class="src">百度热搜</td><td><span class="score">80%</span></td></tr>
+<tr data-source="华尔街见闻"><td><a href="https://wallstreetcn.com/articles/3768819" target="_blank" rel="noopener">美伊均释放结束中东冲突意愿，美股大涨、纳指飙升近4%，原油重挫，金银大涨</a></td><td class="src">华尔街见闻</td><td><span class="score">90%</span></td></tr>
+<tr data-source="华尔街见闻"><td><a href="https://wallstreetcn.com/articles/3768902" target="_blank" rel="noopener">巴菲特：押注苹果赚了1000亿但卖早了，目前美股不便宜、不抄底，预警银行体系脆弱迹象</a></td><td class="src">华尔街见闻</td><td><span class="score">85%</span></td></tr>
+<tr data-source="华尔街见闻"><td><a href="https://wallstreetcn.com/articles/3768936" target="_blank" rel="noopener">美伊释放停战信号，纳指涨超1%，科技股普涨，布油跌超2%，美元小幅走软，黄金日内涨2%</a></td><td class="src">华尔街见闻</td><td><span class="score">85%</span></td></tr>
+<tr data-source="华尔街见闻"><td><a href="https://wallstreetcn.com/articles/3768942" target="_blank" rel="noopener">WTI日内涨近1%，报道称阿联酋准备帮助美国武力打开霍尔木兹海峡</a></td><td class="src">华尔街见闻</td><td><span class="score">80%</span></td></tr>
+<tr data-source="华尔街见闻"><td><a href="https://wallstreetcn.com/articles/3768996" target="_blank" rel="noopener">报道称美财政部预计油价将长期维持在100美元上方，不排除涨至200美元的可能</a></td><td class="src">华尔街见闻</td><td><span class="score">80%</span></td></tr>
+<tr data-source="B站热搜"><td><a href="https://search.bilibili.com/all?keyword=%E7%BE%8E%E8%81%94%E5%82%A8%E4%B8%BB%E5%B8%AD%E5%9C%A8%E5%93%88%E4%BD%9B%E8%AE%B2%E4%BA%86%E4%BB%80%E4%B9%88" target="_blank" rel="noopener">美联储主席在哈佛讲了什么</a></td><td class="src">B站热搜</td><td><span class="score">80%</span></td></tr>
+<tr data-source="财联社"><td><a href="https://www.cls.cn/detail/2332520" target="_blank" rel="noopener">最高下调35个基点！“开门红”结束多家银行调降存款挂牌利率，短期产品成压降重点</a></td><td class="src">财联社</td><td><span class="score">80%</span></td></tr>
+<tr data-source="财联社"><td><a href="https://www.cls.cn/detail/2332225" target="_blank" rel="noopener">【数据看盘】顶级游资扎堆雪人集团 量化与游资激烈博弈圣阳股份</a></td><td class="src">财联社</td><td><span class="score">80%</span></td></tr>
+<tr data-source="财联社"><td><a href="https://www.cls.cn/detail/2332482" target="_blank" rel="noopener">170家A股公司收“罚单”20家被立案 一季度监管紧盯蹭热点炒概念</a></td><td class="src">财联社</td><td><span class="score">80%</span></td></tr>
+<tr data-source="财联社"><td><a href="https://www.cls.cn/detail/2332470" target="_blank" rel="noopener">一季度ETF消失了万亿，从6万亿到5万亿，谁在撤退？谁在接棒？</a></td><td class="src">财联社</td><td><span class="score">85%</span></td></tr>
+<tr data-source="财联社"><td><a href="https://www.cls.cn/detail/2332176" target="_blank" rel="noopener">【焦点复盘】A股放量普涨迎4月“开门红”，AI硬件、创新药概念强势领涨</a></td><td class="src">财联社</td><td><span class="score">85%</span></td></tr>
+<tr data-source="财联社"><td><a href="https://www.cls.cn/detail/2332137" target="_blank" rel="noopener">一图看懂 | 清明“1天赚4天息”机会来了，这份国债逆回购指南别错过</a></td><td class="src">财联社</td><td><span class="score">80%</span></td></tr>
+<tr data-source="财联社"><td><a href="https://www.cls.cn/detail/2332393" target="_blank" rel="noopener">局势缓和信号提振市场 全球股市大涨 国际油价回落 | 今夜看点</a></td><td class="src">财联社</td><td><span class="score">85%</span></td></tr>
+<tr data-source="微博"><td><a href="https://s.weibo.com/weibo?q=%23%E9%87%91%E4%BB%B7%E6%80%A5%E9%80%9F%E4%B8%8A%E6%B6%A8%23&amp;t=31&amp;band_rank=22&amp;Refer=top" target="_blank" rel="noopener">金价急速上涨</a></td><td class="src">微博</td><td><span class="score">80%</span></td></tr>
+<tr data-source="知乎"><td><a href="https://www.zhihu.com/question/2022610592674981247" target="_blank" rel="noopener">巴菲特称近期市场下跌与历史上真正的买点相比不值一提，股市估值仍未有吸引力，对此你怎么看？</a></td><td class="src">知乎</td><td><span class="score">80%</span></td></tr>
+<tr data-source="财联社 - 电报"><td><a href="https://api3.cls.cn/share/article/2332677?os=web&amp;sv=8.4.6&amp;app=CailianpressWeb" target="_blank" rel="noopener">财联社4月2日电，美联储隔夜逆回购协议（RRP）周三使用规模为21.07亿美元（交易对手9家），上个交易日报亿美元。</a></td><td class="src">财联社 - 电报</td><td><span class="score">80%</span></td></tr>
+<tr data-source="财联社 - 电报"><td><a href="https://api3.cls.cn/share/article/2332673?os=web&amp;sv=8.4.6&amp;app=CailianpressWeb" target="_blank" rel="noopener">财联社4月2日电，美国天然气期货日内跌幅达3.00%，现报2.797美元/百万英热。</a></td><td class="src">财联社 - 电报</td><td><span class="score">75%</span></td></tr>
+<tr data-source="财联社 - 电报"><td><a href="https://api3.cls.cn/share/article/2332672?os=web&amp;sv=8.4.6&amp;app=CailianpressWeb" target="_blank" rel="noopener">财联社4月2日电，现货白银涨幅达1.00%，报75.82美元/盎司。</a></td><td class="src">财联社 - 电报</td><td><span class="score">75%</span></td></tr>
+<tr data-source="财联社 - 电报"><td><a href="https://api3.cls.cn/share/article/2332671?os=web&amp;sv=8.4.6&amp;app=CailianpressWeb" target="_blank" rel="noopener">LME期铜收涨99美元</a></td><td class="src">财联社 - 电报</td><td><span class="score">75%</span></td></tr>
+<tr data-source="36氪 - 快讯"><td><a href="https://www.36kr.com/newsflashes/3748267329274632" target="_blank" rel="noopener">热门中概股美股盘前多数走强，理想汽车涨超3%</a></td><td class="src">36氪 - 快讯</td><td><span class="score">80%</span></td></tr>
+<tr data-source="36氪 - 快讯"><td><a href="https://www.36kr.com/newsflashes/3748249992380933" target="_blank" rel="noopener">英国央行行长贝利：市场对加息预期的定价有些操之过急</a></td><td class="src">36氪 - 快讯</td><td><span class="score">75%</span></td></tr>
+<tr data-source="36氪 - 快讯"><td><a href="https://www.36kr.com/newsflashes/3748235973673730" target="_blank" rel="noopener">美国3月ADP就业人数增加6.2万人</a></td><td class="src">36氪 - 快讯</td><td><span class="score">75%</span></td></tr>
+<tr data-source="36氪 - 快讯"><td><a href="https://www.36kr.com/newsflashes/3748220805497601" target="_blank" rel="noopener">美联储巴尔金：预期通胀进展缓慢，不会迅速回到目标</a></td><td class="src">36氪 - 快讯</td><td><span class="score">80%</span></td></tr>
+<tr data-source="36氪 - 快讯"><td><a href="https://www.36kr.com/newsflashes/3748202586374664" target="_blank" rel="noopener">现货黄金日内涨幅扩大至2%</a></td><td class="src">36氪 - 快讯</td><td><span class="score">75%</span></td></tr>
+<tr data-source="36氪 - 快讯"><td><a href="https://www.36kr.com/newsflashes/3748189703275009" target="_blank" rel="noopener">中国人民银行、科技部、金融监管总局、中国证监会联合召开科技金融工作交流推进会</a></td><td class="src">36氪 - 快讯</td><td><span class="score">75%</span></td></tr>
+</tbody></table></section>
+<section id="tag-全球科技巨头"><h2>全球科技巨头 (5)</h2><table><thead><tr><th>标题</th><th>来源</th><th>相关度</th></tr></thead><tbody><tr data-source="百度热搜"><td><a href="https://www.baidu.com/s?wd=SpaceX%E6%8D%AE%E6%8A%A5%E5%B7%B2%E7%A7%98%E5%AF%86%E6%8F%90%E4%BA%A4IPO%E6%96%87%E4%BB%B6" target="_blank" rel="noopener">SpaceX据报已秘密提交IPO文件</a></td><td class="src">百度热搜</td><td><span class="score">90%</span></td></tr>
+<tr data-source="微博"><td><a href="https://s.weibo.com/weibo?q=%23%E7%94%B2%E9%AA%A8%E6%96%873%E4%B8%87%E4%BA%BA%E4%B8%80%E8%A7%89%E7%9D%A1%E9%86%92%E5%B7%A5%E4%BD%9C%E6%B2%A1%E4%BA%86%23&amp;t=31&amp;band_rank=19&amp;Refer=top" target="_blank" rel="noopener">甲骨文3万人一觉睡醒工作没了</a></td><td class="src">微博</td><td><span class="score">80%</span></td></tr>
+<tr data-source="Top Links | Hacker News"><td><a href="https://rollingout.com/2026/03/31/oracle-slashes-30000-jobs-with-a-cold-6/" target="_blank" rel="noopener">甲骨文裁员3万 | Oracle slashes 30k jobs</a></td><td class="src">Top Links | Hacker News</td><td><span class="score">80%</span></td></tr>
+<tr data-source="36氪 - 快讯"><td><a href="https://www.36kr.com/newsflashes/3748265445196294" target="_blank" rel="noopener">美股大型科技股盘前普涨，谷歌涨超1%</a></td><td class="src">36氪 - 快讯</td><td><span class="score">85%</span></td></tr>
+<tr data-source="IT之家-24 小时最热"><td><a href="https://www.ithome.com/0/935/051.htm" target="_blank" rel="noopener">曝国行版苹果 Apple Intelligence 不止撤回推送，下载到本地的模型也会被删除</a></td><td class="src">IT之家-24 小时最热</td><td><span class="score">85%</span></td></tr>
+</tbody></table></section>
+<section id="tag-AI与大模型"><h2>AI与大模型 (32)</h2><table><thead><tr><th>标题</th><th>来源</th><th>相关度</th></tr></thead><tbody><tr data-source="百度热搜"><td><a href="https://www.baidu.com/s?wd=%E8%A2%ABAI%E7%9F%AD%E5%89%A7%E7%9B%97%E8%84%B8%E6%88%90%E4%B8%91%E8%A7%92+%E5%A5%B3%E6%A8%A1%E7%89%B9%E5%8F%91%E5%A3%B0" target="_blank" rel="noopener">被AI短剧盗脸成丑角 女模特发声</a></td><td class="src">百度热搜</td><td><span class="score">85%</span></td></tr>
+<tr data-source="B站热搜"><td><a href="https://search.bilibili.com/all?keyword=%E4%BB%8E%E6%B3%84%E9%9C%B2%E6%BA%90%E7%A0%81%E6%89%92%E5%87%BAClaude%E9%9A%90%E8%97%8F%E5%BD%A9%E8%9B%8B" target="_blank" rel="noopener">从泄露源码扒出Claude隐藏彩蛋</a></td><td class="src">B站热搜</td><td><span class="score">85%</span></td></tr>
+<tr data-source="B站热搜"><td><a href="https://search.bilibili.com/all?keyword=Claude%20Opus%E6%98%AF%E5%90%A6%E4%BC%9A%E6%B7%98%E6%B1%B0%E7%A8%8B%E5%BA%8F%E5%91%98" target="_blank" rel="noopener">Claude Opus是否会淘汰程序员</a></td><td class="src">B站热搜</td><td><span class="score">85%</span></td></tr>
+<tr data-source="B站热搜"><td><a href="https://search.bilibili.com/all?keyword=UP%E4%B8%BB%E5%A4%8D%E7%8E%B0Claude%20Code%E4%BB%A3%E7%A0%81%E6%BC%8F%E6%B4%9E" target="_blank" rel="noopener">UP主复现Claude Code代码漏洞</a></td><td class="src">B站热搜</td><td><span class="score">85%</span></td></tr>
+<tr data-source="B站热搜"><td><a href="https://search.bilibili.com/all?keyword=Claude%20Code%E6%BA%90%E7%A0%81%E5%88%86%E6%9E%90%E4%B8%8E%E5%A4%8D%E5%88%BB%E5%AE%9E%E7%8E%B0" target="_blank" rel="noopener">Claude Code源码分析与复刻实现</a></td><td class="src">B站热搜</td><td><span class="score">85%</span></td></tr>
+<tr data-source="贴吧"><td><a href="https://tieba.baidu.com/hottopic/browse/hottopic?topic_id=28352627&amp;amp;topic_name=%E6%84%9A%E4%BA%BA%3FB%E7%AB%99%E4%B8%8B%E7%BA%BF%E7%8C%9C%E4%BD%A0%E5%96%9C%E6%AC%A2%E7%AE%97%E6%B3%95" target="_blank" rel="noopener">愚人?B站下线猜你喜欢算法</a></td><td class="src">贴吧</td><td><span class="score">75%</span></td></tr>
+<tr data-source="贴吧"><td><a href="https://tieba.baidu.com/hottopic/browse/hottopic?topic_id=28352553&amp;amp;topic_name=%E5%87%8C%E6%99%A83%E7%82%B9%E4%B8%8A%E7%8F%AD%2CAI%E5%8D%B7%E7%96%AF%E6%89%93%E5%B7%A5%E4%BA%BA" target="_blank" rel="noopener">凌晨3点上班,AI卷疯打工人</a></td><td class="src">贴吧</td><td><span class="score">85%</span></td></tr>
+<tr data-source="抖音"><td><a href="https://www.douyin.com/hot/2451216" target="_blank" rel="noopener">ClaudeCode源码泄露</a></td><td class="src">抖音</td><td><span class="score">90%</span></td></tr>
+<tr data-source="知乎"><td><a href="https://www.zhihu.com/question/2022254775757009403" target="_blank" rel="noopener">Claude 正在自己设计下一代 Claude，当 AI 开始自我进化，将对行业带来哪些影响？</a></td><td class="src">知乎</td><td><span class="score">95%</span></td></tr>
+<tr data-source="Top Links | Hacker News"><td><a href="https://claude.nagdy.me/" target="_blank" rel="noopener">动手学Claude代码，而非仅阅读 | Learn Claude Code by doing, not reading</a></td><td class="src">Top Links | Hacker News</td><td><span class="score">90%</span></td></tr>
+<tr data-source="Top Links | Hacker News"><td><a href="https://github.com/google-research/timesfm" target="_blank" rel="noopener">谷歌推出2亿参数时序基础模型，支持1.6万上下文 | Google&#x27;s 200M-parameter time-series foundation model with 16k context</a></td><td class="src">Top Links | Hacker News</td><td><span class="score">90%</span></td></tr>
+<tr data-source="Top Links | Hacker News"><td><a href="https://www.theregister.com/2026/03/31/anthropic_claude_code_limits/" target="_blank" rel="noopener">Claude代码用户使用量远超预期 | Claude Code users hitting usage limits &#x27;way faster than expected&#x27;</a></td><td class="src">Top Links | Hacker News</td><td><span class="score">85%</span></td></tr>
+<tr data-source="Top Links | Hacker News"><td><a href="https://prismml.com/" target="_blank" rel="noopener">Show HN：1-Bit Bonsai，首个商业可行的1位LLM | Show HN: 1-Bit Bonsai, the First Commercially Viable 1-Bit LLMs</a></td><td class="src">Top Links | Hacker News</td><td><span class="score">90%</span></td></tr>
+<tr data-source="Top Links | Hacker News"><td><a href="https://github.com/drona23/claude-token-efficient" target="_blank" rel="noopener">通用克劳德.md – 减少克劳德输出令牌 | Universal Claude.md – cut Claude output tokens</a></td><td class="src">Top Links | Hacker News</td><td><span class="score">85%</span></td></tr>
+<tr data-source="Top Links | Hacker News"><td><a href="https://www.cnbc.com/2026/03/31/openai-funding-round-ipo.html" target="_blank" rel="noopener">OpenAI融资轮估值达8520亿美元 | OpenAI closes funding round at an $852B valuation</a></td><td class="src">Top Links | Hacker News</td><td><span class="score">95%</span></td></tr>
+<tr data-source="Top Links | Hacker News"><td><a href="https://www.microsoft.com/en-us/microsoft-copilot/for-individuals/termsofuse" target="_blank" rel="noopener">微软：Copilot仅供娱乐使用 | Microsoft: Copilot is for entertainment purposes only</a></td><td class="src">Top Links | Hacker News</td><td><span class="score">80%</span></td></tr>
+<tr data-source="Top Links | Hacker News"><td><a href="https://ollama.com/blog/mlx" target="_blank" rel="noopener">Ollama现已支持苹果芯片MLX预览版 | Ollama is now powered by MLX on Apple Silicon in preview</a></td><td class="src">Top Links | Hacker News</td><td><span class="score">85%</span></td></tr>
+<tr data-source="Top Links | Hacker News"><td><a href="https://ccunpacked.dev/" target="_blank" rel="noopener">克劳德代码解析：视觉指南 | Claude Code Unpacked : A visual guide</a></td><td class="src">Top Links | Hacker News</td><td><span class="score">90%</span></td></tr>
+<tr data-source="Top Links | Hacker News"><td><a href="https://alex000kim.com/posts/2026-03-31-claude-code-source-leak/" target="_blank" rel="noopener">克劳德代码源泄露：假工具、挫败正则、卧底模式 | The Claude Code Source Leak: fake tools, frustration regexes, undercover mode</a></td><td class="src">Top Links | Hacker News</td><td><span class="score">90%</span></td></tr>
+<tr data-source="Top Links | Hacker News"><td><a href="https://twitter.com/Fried_rice/status/2038894956459290963" target="_blank" rel="noopener">Claude Code源代码通过NPM注册表地图文件泄露 | Claude Code&#x27;s source code has been leaked via a map file in their NPM registry</a></td><td class="src">Top Links | Hacker News</td><td><span class="score">90%</span></td></tr>
+<tr data-source="掘金本周最热"><td><a href="https://juejin.cn/post/7623251356006989860" target="_blank" rel="noopener">突发！Claude Code 51万行源码全网裸奔：一场史诗级“开源”事故，国内大厂笑麻了</a></td><td class="src">掘金本周最热</td><td><span class="score">95%</span></td></tr>
+<tr data-source="掘金本周最热"><td><a href="https://juejin.cn/post/7623242804392902665" target="_blank" rel="noopener">💥 Claude Code 源码泄露？我把这个最强 AI Coding Agent 的架构扒干净了</a></td><td class="src">掘金本周最热</td><td><span class="score">95%</span></td></tr>
+<tr data-source="掘金本周最热"><td><a href="https://juejin.cn/post/7623066322222153728" target="_blank" rel="noopener">Claude Code 源码泄漏：拆解一个工业级 AI Coding Agent 到底是怎么造出来的</a></td><td class="src">掘金本周最热</td><td><span class="score">95%</span></td></tr>
+<tr data-source="少数派 -- Matrix"><td><a href="https://sspai.com/post/108063" target="_blank" rel="noopener">Claude Code：防封号、模型选择与设计哲学</a></td><td class="src">少数派 -- Matrix</td><td><span class="score">90%</span></td></tr>
+<tr data-source="掘金本周最热"><td><a href="https://juejin.cn/post/7621905728757678126" target="_blank" rel="noopener">来看看GLM5.1到底升级了什么！</a></td><td class="src">掘金本周最热</td><td><span class="score">85%</span></td></tr>
+<tr data-source="掘金本周最热"><td><a href="https://juejin.cn/post/7621830194840207396" target="_blank" rel="noopener">别卷模型了！OpenAI 工程师都在偷偷用的&quot;Harness Engineering&quot;，才是 AI 编程的终极杀器</a></td><td class="src">掘金本周最热</td><td><span class="score">90%</span></td></tr>
+<tr data-source="掘金本周最热"><td><a href="https://juejin.cn/post/7621453614445068328" target="_blank" rel="noopener">AI Agent 智能体 - Multi-Agent 架构入门</a></td><td class="src">掘金本周最热</td><td><span class="score">90%</span></td></tr>
+<tr data-source="掘金本周最热"><td><a href="https://juejin.cn/post/7621210336354795535" target="_blank" rel="noopener">你每个月花多少钱在AI上，有没有省钱妙招啊😭 | 沸点周刊 3.26</a></td><td class="src">掘金本周最热</td><td><span class="score">80%</span></td></tr>
+<tr data-source="掘金本周最热"><td><a href="https://juejin.cn/post/7621018086649331721" target="_blank" rel="noopener">搞懂 Cursor 后，我一行代码都不敲了《进阶篇》</a></td><td class="src">掘金本周最热</td><td><span class="score">90%</span></td></tr>
+<tr data-source="少数派 -- Matrix"><td><a href="https://sspai.com/post/107600" target="_blank" rel="noopener">智能体体验导论 | Agent Experience 导论</a></td><td class="src">少数派 -- Matrix</td><td><span class="score">85%</span></td></tr>
+<tr data-source="知乎热榜"><td><a href="https://www.zhihu.com/question/2017266017961736190" target="_blank" rel="noopener">如何把 AI 训练成自己的「第二大脑」？</a></td><td class="src">知乎热榜</td><td><span class="score">90%</span></td></tr>
+<tr data-source="知乎热榜"><td><a href="https://www.zhihu.com/question/2010617699286402983" target="_blank" rel="noopener">双非一本，想走Agent开发，请问达到主流公司就业的最低技术栈是哪些？</a></td><td class="src">知乎热榜</td><td><span class="score">85%</span></td></tr>
+</tbody></table></section>
+<section id="tag-航天探索"><h2>航天探索 (5)</h2><table><thead><tr><th>标题</th><th>来源</th><th>相关度</th></tr></thead><tbody><tr data-source="B站热搜"><td><a href="https://search.bilibili.com/all?keyword=%E9%98%BF%E5%B0%94%E5%BF%92%E5%BC%A5%E6%96%AF%E4%BA%8C%E5%8F%B7%E8%BD%BD%E4%BA%BA%E7%BB%95%E6%9C%88%E4%BB%BB%E5%8A%A1%E5%89%8D%E7%9E%BB" target="_blank" rel="noopener">阿尔忒弥斯二号载人绕月任务前瞻</a></td><td class="src">B站热搜</td><td><span class="score">90%</span></td></tr>
+<tr data-source="B站热搜"><td><a href="https://search.bilibili.com/all?keyword=%E7%8E%B0%E5%9C%BA%E8%A7%81%E8%AF%81%E5%8A%9B%E7%AE%AD%E4%BA%8C%E5%8F%B7%E5%8F%91%E5%B0%84" target="_blank" rel="noopener">现场见证力箭二号发射</a></td><td class="src">B站热搜</td><td><span class="score">90%</span></td></tr>
+<tr data-source="Top Links | Hacker News"><td><a href="https://home.cern/news/news/engineering/cern-levels-new-superconducting-karts" target="_blank" rel="noopener">欧洲核子中心升级超导卡丁车 | CERN levels up with new superconducting karts</a></td><td class="src">Top Links | Hacker News</td><td><span class="score">80%</span></td></tr>
+<tr data-source="Top Links | Hacker News"><td><a href="https://idlewords.com/2026/03/artemis_ii_is_not_safe_to_fly.htm" target="_blank" rel="noopener">阿尔忒弥斯二号飞行不安全 | Artemis II is not safe to fly</a></td><td class="src">Top Links | Hacker News</td><td><span class="score">85%</span></td></tr>
+<tr data-source="财联社 - 电报"><td><a href="https://api3.cls.cn/share/article/2332666?os=web&amp;sv=8.4.6&amp;app=CailianpressWeb" target="_blank" rel="noopener">财联社4月2日电，SpaceX据称将于5月4日与各银行举行视频财务讨论会。</a></td><td class="src">财联社 - 电报</td><td><span class="score">85%</span></td></tr>
+</tbody></table></section>
+<section id="tag-芯片半导体"><h2>芯片半导体 (4)</h2><table><thead><tr><th>标题</th><th>来源</th><th>相关度</th></tr></thead><tbody><tr data-source="B站热搜"><td><a href="https://search.bilibili.com/all?keyword=%E8%A2%AB%E7%B2%BE%E5%BF%83%E8%AE%BE%E8%AE%A1%E7%9A%84%E5%86%85%E5%AD%98%E6%B6%A8%E4%BB%B7%E6%B8%B8%E6%88%8F" target="_blank" rel="noopener">被精心设计的内存涨价游戏</a></td><td class="src">B站热搜</td><td><span class="score">80%</span></td></tr>
+<tr data-source="B站热搜"><td><a href="https://search.bilibili.com/all?keyword=%E5%86%85%E5%AD%98%E8%A6%81%E9%99%8D%E4%BB%B7%E4%BA%86%E5%90%97" target="_blank" rel="noopener">内存要降价了吗</a></td><td class="src">B站热搜</td><td><span class="score">80%</span></td></tr>
+<tr data-source="贴吧"><td><a href="https://tieba.baidu.com/hottopic/browse/hottopic?topic_id=28352660&amp;amp;topic_name=%E5%86%85%E5%AD%98%E9%9B%AA%E5%B4%A9%2C%E5%9B%A4%E8%B4%A7%E4%BD%AC%E8%B7%AA%E6%B1%82%E5%87%BA%E8%B4%A7" target="_blank" rel="noopener">内存雪崩,囤货佬跪求出货</a></td><td class="src">贴吧</td><td><span class="score">80%</span></td></tr>
+<tr data-source="36氪 - 快讯"><td><a href="https://www.36kr.com/newsflashes/3748212413514502" target="_blank" rel="noopener">扬杰科技：一季度净利润预增20%—40%</a></td><td class="src">36氪 - 快讯</td><td><span class="score">80%</span></td></tr>
+</tbody></table></section>
+<section id="tag-智能汽车"><h2>智能汽车 (9)</h2><table><thead><tr><th>标题</th><th>来源</th><th>相关度</th></tr></thead><tbody><tr data-source="财联社"><td><a href="https://www.cls.cn/detail/2332472" target="_blank" rel="noopener">3月造车新势力集体回暖：零跑重回“5万俱乐部” “蔚小理”环比增超五成</a></td><td class="src">财联社</td><td><span class="score">90%</span></td></tr>
+<tr data-source="财联社 - 电报"><td><a href="https://api3.cls.cn/share/article/2332663?os=web&amp;sv=8.4.6&amp;app=CailianpressWeb" target="_blank" rel="noopener">财联社4月2日电，特斯拉3月份在葡萄牙的新车注册量在同比下降1.7%，而1-3月期间则增长了27.1%。</a></td><td class="src">财联社 - 电报</td><td><span class="score">80%</span></td></tr>
+<tr data-source="IT之家-24 小时最热"><td><a href="https://www.ithome.com/0/935/056.htm" target="_blank" rel="noopener">比亚迪 3 月销售 300222 辆环比翻番，获得中国车企销量冠军</a></td><td class="src">IT之家-24 小时最热</td><td><span class="score">90%</span></td></tr>
+<tr data-source="IT之家-24 小时最热"><td><a href="https://www.ithome.com/0/934/893.htm" target="_blank" rel="noopener">消息称特斯拉原中国区总经理孔艳双入职小米，负责汽车销售有关工作</a></td><td class="src">IT之家-24 小时最热</td><td><span class="score">85%</span></td></tr>
+<tr data-source="IT之家-24 小时最热"><td><a href="https://www.ithome.com/0/934/874.htm" target="_blank" rel="noopener">雷军明晚 19~24 时直播拆车：逐一拆解、讲透小米新 SU7 每个细节</a></td><td class="src">IT之家-24 小时最热</td><td><span class="score">90%</span></td></tr>
+<tr data-source="IT之家-24 小时最热"><td><a href="https://www.ithome.com/0/934/765.htm" target="_blank" rel="noopener">2026 年 3 月汽车销量 / 交付汇总：长安超 27 万辆、比亚迪超 30 万辆（持续更新）</a></td><td class="src">IT之家-24 小时最热</td><td><span class="score">85%</span></td></tr>
+<tr data-source="IT之家-24 小时最热"><td><a href="https://www.ithome.com/0/934/757.htm" target="_blank" rel="noopener">小米汽车 3 月交付量超 20000 台，新一代 SU7 交付已超 7000 台</a></td><td class="src">IT之家-24 小时最热</td><td><span class="score">90%</span></td></tr>
+<tr data-source="IT之家-24 小时最热"><td><a href="https://www.ithome.com/0/934/729.htm" target="_blank" rel="noopener">多辆萝卜快跑车辆停在路中间不能移动，武汉交警通报称系统故障所致</a></td><td class="src">IT之家-24 小时最热</td><td><span class="score">80%</span></td></tr>
+<tr data-source="IT之家-24 小时最热"><td><a href="https://www.ithome.com/0/934/704.htm" target="_blank" rel="noopener">奔驰改款 GLE / GLS 新车四连发：换装全新 V8 发动机，目光所及全是“星星”</a></td><td class="src">IT之家-24 小时最热</td><td><span class="score">80%</span></td></tr>
+</tbody></table></section>
+<section id="tag-地缘政治"><h2>地缘政治 (19)</h2><table><thead><tr><th>标题</th><th>来源</th><th>相关度</th></tr></thead><tbody><tr data-source="抖音"><td><a href="https://www.douyin.com/hot/2451473" target="_blank" rel="noopener">外交部回应日本强行部署远程导弹</a></td><td class="src">抖音</td><td><span class="score">80%</span></td></tr>
+<tr data-source="抖音"><td><a href="https://www.douyin.com/hot/2450674" target="_blank" rel="noopener">伊朗愿在诉求满足下结束战争</a></td><td class="src">抖音</td><td><span class="score">80%</span></td></tr>
+<tr data-source="抖音"><td><a href="https://www.douyin.com/hot/2451136" target="_blank" rel="noopener">台湾掀“抢塑潮” 国台办回应</a></td><td class="src">抖音</td><td><span class="score">80%</span></td></tr>
+<tr data-source="抖音"><td><a href="https://www.douyin.com/hot/2450996" target="_blank" rel="noopener">马克龙访问日本</a></td><td class="src">抖音</td><td><span class="score">75%</span></td></tr>
+<tr data-source="知乎"><td><a href="https://www.zhihu.com/question/2022729020421220020" target="_blank" rel="noopener">伊朗副议长称目前最高领袖未批准任何谈判，如何解读？美伊关系未来将如何发展？</a></td><td class="src">知乎</td><td><span class="score">85%</span></td></tr>
+<tr data-source="知乎"><td><a href="https://www.zhihu.com/question/2022629156312147194" target="_blank" rel="noopener">美军「布什」号航母正部署至中东地区，数千名美军士兵正前往中东，美军可能如何行动？会发动地面战吗？</a></td><td class="src">知乎</td><td><span class="score">85%</span></td></tr>
+<tr data-source="知乎"><td><a href="https://www.zhihu.com/question/2022625871878440582" target="_blank" rel="noopener">国台办回应台湾石油紧张，称和平统一后，台湾同胞再也无需为各种能源物资短缺而焦虑，如何看待这一表态？</a></td><td class="src">知乎</td><td><span class="score">80%</span></td></tr>
+<tr data-source="知乎"><td><a href="https://www.zhihu.com/question/2022445055642792589" target="_blank" rel="noopener">美以袭击伊朗进入第 33 天，当前局势如何？有哪些信息值得关注？</a></td><td class="src">知乎</td><td><span class="score">85%</span></td></tr>
+<tr data-source="财联社 - 电报"><td><a href="https://api3.cls.cn/share/article/2332681?os=web&amp;sv=8.4.6&amp;app=CailianpressWeb" target="_blank" rel="noopener">伊朗媒体：伊朗总统将发表致美国人民公开信</a></td><td class="src">财联社 - 电报</td><td><span class="score">80%</span></td></tr>
+<tr data-source="财联社 - 电报"><td><a href="https://api3.cls.cn/share/article/2332680?os=web&amp;sv=8.4.6&amp;app=CailianpressWeb" target="_blank" rel="noopener">特朗普称伊朗目前“已无能力”发展核武器</a></td><td class="src">财联社 - 电报</td><td><span class="score">80%</span></td></tr>
+<tr data-source="财联社 - 电报"><td><a href="https://api3.cls.cn/share/article/2332679?os=web&amp;sv=8.4.6&amp;app=CailianpressWeb" target="_blank" rel="noopener">伊朗军方高官：抵抗阵线在对美以战斗中展现力量</a></td><td class="src">财联社 - 电报</td><td><span class="score">85%</span></td></tr>
+<tr data-source="财联社 - 电报"><td><a href="https://api3.cls.cn/share/article/2332678?os=web&amp;sv=8.4.6&amp;app=CailianpressWeb" target="_blank" rel="noopener">三国际机构决定成立协调小组应对中东战争的经济影响</a></td><td class="src">财联社 - 电报</td><td><span class="score">75%</span></td></tr>
+<tr data-source="财联社 - 电报"><td><a href="https://api3.cls.cn/share/article/2332676?os=web&amp;sv=8.4.6&amp;app=CailianpressWeb" target="_blank" rel="noopener">伊朗称600多处教育设施遭美以蓄意袭击</a></td><td class="src">财联社 - 电报</td><td><span class="score">85%</span></td></tr>
+<tr data-source="财联社 - 电报"><td><a href="https://api3.cls.cn/share/article/2332674?os=web&amp;sv=8.4.6&amp;app=CailianpressWeb" target="_blank" rel="noopener">消息人士称特朗普开出停火条件：需满足美方“特定要求”</a></td><td class="src">财联社 - 电报</td><td><span class="score">80%</span></td></tr>
+<tr data-source="财联社 - 电报"><td><a href="https://api3.cls.cn/share/article/2332670?os=web&amp;sv=8.4.6&amp;app=CailianpressWeb" target="_blank" rel="noopener">伊朗总统强调捍卫国家独立与安全</a></td><td class="src">财联社 - 电报</td><td><span class="score">80%</span></td></tr>
+<tr data-source="财联社 - 电报"><td><a href="https://api3.cls.cn/share/article/2332669?os=web&amp;sv=8.4.6&amp;app=CailianpressWeb" target="_blank" rel="noopener">伊朗军方称打击以色列军工企业</a></td><td class="src">财联社 - 电报</td><td><span class="score">85%</span></td></tr>
+<tr data-source="财联社 - 电报"><td><a href="https://api3.cls.cn/share/article/2332668?os=web&amp;sv=8.4.6&amp;app=CailianpressWeb" target="_blank" rel="noopener">伊朗强调不理会美以的“幻想与谎言”</a></td><td class="src">财联社 - 电报</td><td><span class="score">80%</span></td></tr>
+<tr data-source="财联社 - 电报"><td><a href="https://api3.cls.cn/share/article/2332665?os=web&amp;sv=8.4.6&amp;app=CailianpressWeb" target="_blank" rel="noopener">美官员称美军已损失16架MQ-9型“死神”无人机</a></td><td class="src">财联社 - 电报</td><td><span class="score">75%</span></td></tr>
+<tr data-source="财联社 - 电报"><td><a href="https://api3.cls.cn/share/article/2332662?os=web&amp;sv=8.4.6&amp;app=CailianpressWeb" target="_blank" rel="noopener">俄外长：若被视为伊朗问题调解方 俄方愿提供协助</a></td><td class="src">财联社 - 电报</td><td><span class="score">80%</span></td></tr>
+</tbody></table></section>
+<section id="tag-开源项目"><h2>开源项目 (5)</h2><table><thead><tr><th>标题</th><th>来源</th><th>相关度</th></tr></thead><tbody><tr data-source="Top Links | Hacker News"><td><a href="https://sockpuppet.org/blog/2026/03/30/vulnerability-research-is-cooked/" target="_blank" rel="noopener">漏洞研究已成熟 | Vulnerability research is cooked</a></td><td class="src">Top Links | Hacker News</td><td><span class="score">75%</span></td></tr>
+<tr data-source="Top Links | Hacker News"><td><a href="https://ministack.org/" target="_blank" rel="noopener">MiniStack（替代LocalStack） | MiniStack (replacement for LocalStack)</a></td><td class="src">Top Links | Hacker News</td><td><span class="score">80%</span></td></tr>
+<tr data-source="Top Links | Hacker News"><td><a href="https://www.theregister.com/2026/03/30/github_copilot_ads_pull_requests/" target="_blank" rel="noopener">GitHub撤回决定，取消Copilot拉取请求广告 | GitHub backs down, kills Copilot pull-request ads after backlash</a></td><td class="src">Top Links | Hacker News</td><td><span class="score">75%</span></td></tr>
+<tr data-source="Top Links | Hacker News"><td><a href="https://www.stepsecurity.io/blog/axios-compromised-on-npm-malicious-versions-drop-remote-access-trojan" target="_blank" rel="noopener">Axios库遭NPM投毒，恶意版本暗藏远程访问木马 | Axios compromised on NPM – Malicious versions drop remote access trojan</a></td><td class="src">Top Links | Hacker News</td><td><span class="score">80%</span></td></tr>
+<tr data-source="IT之家-24 小时最热"><td><a href="https://www.ithome.com/0/934/873.htm" target="_blank" rel="noopener">OpenClaw 3.31 重磅更新：“龙虾”框架原生集成腾讯 QQ 机器人</a></td><td class="src">IT之家-24 小时最热</td><td><span class="score">80%</span></td></tr>
+</tbody></table></section>
+<script>
+function filterSource(){
+  const checked=new Set();
+  document.querySelectorAll('.filters input:checked')
+    .forEach(cb=>checked.add(cb.value));
+  document.querySelectorAll('tr[data-source]').forEach(tr=>{
+    tr.classList.toggle('hidden',!checked.has(tr.dataset.source));
+  });
+}
+</script>
+</body></html>

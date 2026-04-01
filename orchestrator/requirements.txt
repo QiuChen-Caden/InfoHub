@@ -1,0 +1,8 @@
+requests==2.33.0
+PyYAML==6.0.3
+litellm==1.82.6
+json-repair==0.58.6
+tenacity==8.5.0
+feedparser==6.0.12
+schedule==1.2.2
+miniflux==0.0.18

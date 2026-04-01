@@ -1,0 +1,44 @@
+platforms:
+  - toutiao
+  - baidu
+  - wallstreetcn-hot
+  - thepaper
+  - bilibili-hot-search
+  - cls-hot
+  - ifeng
+  - tieba
+  - weibo
+  - douyin
+  - zhihu
+
+miniflux_url: ${MINIFLUX_URL:-http://miniflux:8080}
+miniflux_api_key: ${MINIFLUX_API_KEY}
+
+rsshub_url: ${RSSHUB_URL:-http://rsshub:1200}
+
+ai:
+  model: ${AI_MODEL:-deepseek/deepseek-chat}
+  api_key: ${AI_API_KEY}
+  api_base: ${AI_API_BASE:-}
+  timeout: 120
+  max_tokens: 5000
+  batch_size: 200
+  batch_interval: 2
+  min_score: 0.7
+  summary_enabled: true
+
+notification:
+  batch_interval: 2
+  telegram_bot_token: ${TELEGRAM_BOT_TOKEN:-}
+  telegram_chat_id: ${TELEGRAM_CHAT_ID:-}
+  feishu_webhook_url: ${FEISHU_WEBHOOK_URL:-}
+  dingtalk_webhook_url: ${DINGTALK_WEBHOOK_URL:-}
+  email_from: ${EMAIL_FROM:-}
+  email_password: ${EMAIL_PASSWORD:-}
+  email_to: ${EMAIL_TO:-}
+  slack_webhook_url: ${SLACK_WEBHOOK_URL:-}
+
+output_dir: /app/output
+obsidian_vault_path: ${OBSIDIAN_VAULT_PATH:-}
+
+cron_schedule: ${CRON_SCHEDULE:-*/30 * * * *}
