@@ -139,7 +139,7 @@ services:
       dockerfile: Dockerfile.api
     restart: unless-stopped
     ports:
-      - "8000:8000"
+      - "9090:8000"
     environment:
       APP_MODE: api
       DATABASE_URL: "postgresql://infohub:${INFOHUB_DB_PASSWORD}@postgres:5432/infohub"
