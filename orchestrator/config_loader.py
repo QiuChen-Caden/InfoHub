@@ -1,18 +1,141 @@
-"""配置加载 — YAML + 环境变量 + 校验"""
+"""配置加载 — 从数据库加载租户配置，兼容旧 YAML 模式"""
 
 import os
 import re
-import sys
 import logging
 from pathlib import Path
+from uuid import UUID
+from typing import Optional
 
 import yaml
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from models_db import TenantConfig, TenantSecret
+from crypto import decrypt
 
 log = logging.getLogger("infohub.config")
 
+# 默认 AI 配置
+DEFAULT_AI = {
+    "model": "deepseek/deepseek-chat",
+    "timeout": 120,
+    "max_tokens": 5000,
+    "batch_size": 200,
+    "batch_interval": 2,
+    "min_score": 0.7,
+    "summary_enabled": True,
+}
+
+# 默认平台列表
+DEFAULT_PLATFORMS = [
+    "toutiao", "baidu", "wallstreetcn-hot", "thepaper",
+    "bilibili-hot-search", "cls-hot", "ifeng", "tieba",
+    "weibo", "douyin", "zhihu",
+]
+
+
+async def load_tenant_config(session: AsyncSession, tenant_id: UUID) -> dict:
+    """从数据库加载租户配置，合并默认值"""
+    result = await session.execute(
+        select(TenantConfig).where(TenantConfig.tenant_id == tenant_id)
+    )
+    tc = result.scalar_one_or_none()
+
+    # 加载租户密钥
+    secrets = await _load_secrets(session, tenant_id)
+
+    if not tc:
+        log.warning(f"租户 {tenant_id} 无配置，使用默认值")
+        return _build_default_config(secrets, tenant_id)
+
+    # 合并 AI 配置
+    ai = {**DEFAULT_AI}
+    if tc.ai_config:
+        ai.update(tc.ai_config)
+    # 注入 AI API Key（从 secrets）
+    if "ai_api_key" in secrets:
+        ai["api_key"] = secrets["ai_api_key"]
+    if "ai_api_base" in secrets:
+        ai["api_base"] = secrets["ai_api_base"]
+
+    # 合并通知配置 + secrets
+    notification = tc.notification or {}
+    for key in ("telegram_bot_token", "telegram_chat_id", "feishu_webhook_url",
+                "dingtalk_webhook_url", "email_from", "email_password",
+                "email_to", "slack_webhook_url"):
+        if key in secrets:
+            notification[key] = secrets[key]
+
+    config = {
+        "platforms": tc.platforms or DEFAULT_PLATFORMS,
+        "interests": tc.interests or [],
+        "miniflux_url": os.environ.get("MINIFLUX_URL", "http://miniflux:8080"),
+        "miniflux_api_key": secrets.get(
+            "miniflux_api_key",
+            os.environ.get("MINIFLUX_API_KEY", ""),
+        ),
+        "rsshub_url": os.environ.get("RSSHUB_URL", "http://rsshub:1200"),
+        "sources": {
+            "rsshub_feeds": tc.rsshub_feeds or [],
+            "external_feeds": tc.external_feeds or [],
+        },
+        "ai": ai,
+        "notification": notification,
+        "output_dir": os.environ.get("OUTPUT_DIR", "/app/output"),
+        "tenant_id": str(tenant_id),
+        "obsidian_vault_path": os.environ.get("OBSIDIAN_VAULT_PATH", "")
+                               if tc.obsidian_export else "",
+        "cron_schedule": tc.cron_schedule or "*/30 * * * *",
+    }
+
+    log.info(f"租户 {tenant_id} 配置加载: "
+             f"{len(config['platforms'])} 平台, "
+             f"{len(config['interests'])} 兴趣标签")
+    return config
+
+
+async def _load_secrets(session: AsyncSession, tenant_id: UUID) -> dict:
+    """加载并解密租户密钥"""
+    result = await session.execute(
+        select(TenantSecret).where(TenantSecret.tenant_id == tenant_id)
+    )
+    secrets = {}
+    for s in result.scalars().all():
+        try:
+            secrets[s.key_name] = decrypt(s.encrypted_value)
+        except Exception as e:
+            log.error(f"解密密钥 {s.key_name} 失败: {e}")
+    return secrets
+
+
+def _build_default_config(secrets: dict, tenant_id: UUID = None) -> dict:
+    """构建默认配置"""
+    ai = {**DEFAULT_AI}
+    if "ai_api_key" in secrets:
+        ai["api_key"] = secrets["ai_api_key"]
+
+    return {
+        "platforms": DEFAULT_PLATFORMS,
+        "interests": [],
+        "miniflux_url": os.environ.get("MINIFLUX_URL", "http://miniflux:8080"),
+        "miniflux_api_key": secrets.get(
+            "miniflux_api_key",
+            os.environ.get("MINIFLUX_API_KEY", ""),
+        ),
+        "rsshub_url": os.environ.get("RSSHUB_URL", "http://rsshub:1200"),
+        "sources": {"rsshub_feeds": [], "external_feeds": []},
+        "ai": ai,
+        "notification": {},
+        "output_dir": os.environ.get("OUTPUT_DIR", "/app/output"),
+        "tenant_id": str(tenant_id) if tenant_id else "",
+        "obsidian_vault_path": "",
+        "cron_schedule": "*/30 * * * *",
+    }
+
 
 def _resolve_env_vars(value):
-    """递归解析 ${VAR:-default} 格式的环境变量"""
+    """递归解析 ${VAR:-default} 格式的环境变量（私有化部署兼容）"""
     if isinstance(value, str):
         pattern = r'\$\{(\w+)(?::-(.*?))?\}'
         def replacer(match):
@@ -27,97 +150,32 @@ def _resolve_env_vars(value):
     return value
 
 
-def _validate_config(config: dict):
-    """配置校验，关键项缺失直接 fail-fast"""
-    errors = []
-    warnings = []
-
-    # 必须有 output_dir
-    if not config.get("output_dir"):
-        errors.append("output_dir 未配置")
-
-    # AI 配置校验
-    ai = config.get("ai", {})
-    if not ai.get("api_key"):
-        warnings.append("AI API Key 未配置，AI 筛选/摘要/翻译将跳过")
-
-    # 通知渠道成对校验
-    notif = config.get("notification", {})
-    if notif.get("telegram_bot_token") and not notif.get("telegram_chat_id"):
-        errors.append("Telegram: 配置了 bot_token 但缺少 chat_id")
-    if notif.get("telegram_chat_id") and not notif.get("telegram_bot_token"):
-        errors.append("Telegram: 配置了 chat_id 但缺少 bot_token")
-    if notif.get("email_from"):
-        if not notif.get("email_password"):
-            errors.append("Email: 配置了 email_from 但缺少 email_password")
-        if not notif.get("email_to"):
-            errors.append("Email: 配置了 email_from 但缺少 email_to")
-
-    # 平台列表
-    if not config.get("platforms"):
-        warnings.append("未配置监控平台，将使用全部 11 个默认平台")
-
-    # 兴趣标签
-    if not config.get("interests"):
-        warnings.append("未配置兴趣标签，AI 筛选将无法分类")
-
-    # 输出
-    for w in warnings:
-        log.warning(f"[配置] {w}")
-    if errors:
-        for e in errors:
-            log.error(f"[配置] {e}")
-        log.error("配置校验失败，请修正后重试")
-        sys.exit(1)
-
-
-def load_config() -> dict:
-    """加载配置文件并解析环境变量"""
+def load_config_from_yaml() -> dict:
+    """从 YAML 加载配置（私有化部署兼容模式）"""
     config_path = os.environ.get("CONFIG_PATH", "/app/config/config.yaml")
     if not Path(config_path).exists():
         config_path = str(
             Path(__file__).parent.parent / "config" / "config.yaml"
         )
 
-    if not Path(config_path).exists():
-        log.error(f"配置文件不存在: {config_path}")
-        sys.exit(1)
-
     with open(config_path, "r", encoding="utf-8") as f:
         config = yaml.safe_load(f)
 
     config = _resolve_env_vars(config)
-
-    # 本地运行时自动修正 Docker 路径（容器内跳过）
-    project_root = Path(__file__).parent.parent
-    output_dir = config.get("output_dir", "")
-    if output_dir.startswith("/app/") and not Path("/app/config").exists():
-        config["output_dir"] = str(project_root / output_dir[5:])
 
     # 加载兴趣标签
     interests_path = os.environ.get(
         "INTERESTS_PATH",
         str(Path(config_path).parent / "interests.txt"),
     )
-    config["interests"] = _load_interests(interests_path)
+    if Path(interests_path).exists():
+        with open(interests_path, "r", encoding="utf-8") as f:
+            config["interests"] = [line.strip() for line in f if line.strip()]
 
-    # 加载 RSSHub 源配置
+    # 加载 RSS 源
     sources_path = str(Path(config_path).parent / "sources.yaml")
     if Path(sources_path).exists():
         with open(sources_path, "r", encoding="utf-8") as f:
             config["sources"] = yaml.safe_load(f)
 
-    # 校验
-    _validate_config(config)
-
-    log.info(f"配置加载完成: {len(config.get('platforms', []))} 个平台, "
-             f"{len(config.get('interests', []))} 个兴趣标签")
-
     return config
-
-
-def _load_interests(path: str) -> list:
-    if not Path(path).exists():
-        return []
-    with open(path, "r", encoding="utf-8") as f:
-        return [line.strip() for line in f if line.strip()]

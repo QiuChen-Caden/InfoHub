@@ -18,15 +18,15 @@ COPY orchestrator/ .
 COPY --from=frontend-build /build/dist /app/frontend
 
 RUN adduser --disabled-password --no-create-home appuser \
-    && mkdir -p /app/config /app/output /obsidian \
-    && chown -R appuser:appuser /app /obsidian
+    && mkdir -p /app/config /app/output \
+    && chown -R appuser:appuser /app
 
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONIOENCODING=utf-8
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-  CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')" || exit 1
+  CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')" || exit 1
 
 USER appuser
 
-CMD ["uvicorn", "api:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "api.app:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]

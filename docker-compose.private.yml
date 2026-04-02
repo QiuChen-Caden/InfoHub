@@ -1,5 +1,7 @@
+# InfoHub 私有化部署模板 — 单租户一键部署
+version: "3.8"
+
 services:
-  # ---- 数据库 ----
   postgres:
     image: postgres:16-alpine
     restart: unless-stopped
@@ -13,10 +15,6 @@ services:
       test: ["CMD", "pg_isready", "-U", "infohub"]
       interval: 10s
       start_period: 30s
-    deploy:
-      resources:
-        limits:
-          memory: 256M
 
   postgres-miniflux:
     image: postgres:16-alpine
@@ -31,48 +29,27 @@ services:
       test: ["CMD", "pg_isready", "-U", "miniflux"]
       interval: 10s
       start_period: 30s
-    deploy:
-      resources:
-        limits:
-          memory: 256M
 
   redis:
     image: redis:7-alpine
     restart: unless-stopped
     volumes:
       - redis_data:/data
-    deploy:
-      resources:
-        limits:
-          memory: 128M
 
-  # ---- 数据源层 ----
   rsshub:
     image: diygod/rsshub:latest
     restart: unless-stopped
-    ports:
-      - "3200:1200"
     environment:
       NODE_ENV: production
       CACHE_TYPE: redis
       CACHE_EXPIRE: 1800
-      CACHE_CONTENT_EXPIRE: 7200
       REDIS_URL: "redis://redis:6379/"
-      REQUEST_RETRY: 3
-      REQUEST_TIMEOUT: 10000
     depends_on:
       - redis
-    deploy:
-      resources:
-        limits:
-          memory: 1024M
 
-  # ---- 聚合层 ----
   miniflux:
     image: miniflux/miniflux:latest
     restart: unless-stopped
-    ports:
-      - "8880:8080"
     environment:
       DATABASE_URL: "postgres://miniflux:${MINIFLUX_DB_PASSWORD:-miniflux_secret}@postgres-miniflux/miniflux?sslmode=disable"
       RUN_MIGRATIONS: 1
@@ -80,29 +57,17 @@ services:
       ADMIN_USERNAME: ${MINIFLUX_ADMIN:-admin}
       ADMIN_PASSWORD: ${MINIFLUX_PASSWORD:-changeme123}
       POLLING_FREQUENCY: 30
-      BATCH_SIZE: 50
-      WORKER_POOL_SIZE: 8
-      CLEANUP_ARCHIVE_READ_DAYS: 30
-      CLEANUP_ARCHIVE_UNREAD_DAYS: 90
       FETCH_ALLOW_PRIVATE_NETWORKS: 1
       FETCHER_ALLOW_PRIVATE_NETWORKS: 1
     depends_on:
       postgres-miniflux:
         condition: service_healthy
-    healthcheck:
-      test: ["CMD", "miniflux", "-healthcheck", "auto"]
-      interval: 10s
-      start_period: 30s
-    deploy:
-      resources:
-        limits:
-          memory: 128M
 
-  # ---- SaaS API 层（含前端）----
-  api:
+  # 单租户模式：API + Worker 合一
+  infohub:
     build:
-      context: .
-      dockerfile: Dockerfile.api
+      context: ./orchestrator
+      dockerfile: Dockerfile
     restart: unless-stopped
     ports:
       - "8000:8000"
@@ -110,13 +75,14 @@ services:
       APP_MODE: api
       DATABASE_URL: "postgresql+asyncpg://infohub:${POSTGRES_PASSWORD:-infohub_secret}@postgres:5432/infohub"
       REDIS_URL: "redis://redis:6379/0"
-      JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
+      JWT_SECRET: ${JWT_SECRET:-change-me}
       ENCRYPTION_KEY: ${ENCRYPTION_KEY}
       MINIFLUX_URL: "http://miniflux:8080"
       MINIFLUX_ADMIN: ${MINIFLUX_ADMIN:-admin}
       MINIFLUX_PASSWORD: ${MINIFLUX_PASSWORD:-changeme123}
       RSSHUB_URL: "http://rsshub:1200"
       OUTPUT_DIR: /app/output
+      # 私有化引导：首次启动自动从 YAML 创建租户
       BOOTSTRAP_EMAIL: ${BOOTSTRAP_EMAIL:-}
       BOOTSTRAP_PASSWORD: ${BOOTSTRAP_PASSWORD:-}
     volumes:
@@ -127,10 +93,7 @@ services:
         condition: service_healthy
       redis:
         condition: service_started
-      miniflux:
-        condition: service_healthy
 
-  # ---- Celery Worker ----
   worker:
     build:
       context: ./orchestrator
@@ -151,10 +114,7 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      redis:
-        condition: service_started
 
-  # ---- Celery Beat 调度器 ----
   beat:
     build:
       context: ./orchestrator
@@ -167,8 +127,6 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      redis:
-        condition: service_started
 
 volumes:
   postgres_data:

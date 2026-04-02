@@ -1,13 +1,67 @@
-"""Miniflux REST API 封装"""
+"""Miniflux REST API 封装 — 多租户隔离"""
 
 import hashlib
 import logging
 import requests
-from typing import List
+from typing import List, Optional
 
 from models import NewsItem
 
 log = logging.getLogger("infohub.miniflux")
+
+# Miniflux admin 凭据（仅用于创建租户用户）
+import os
+_ADMIN_URL = os.environ.get("MINIFLUX_URL", "http://miniflux:8080").rstrip("/")
+_ADMIN_USER = os.environ.get("MINIFLUX_ADMIN", "admin")
+_ADMIN_PASS = os.environ.get("MINIFLUX_PASSWORD", "changeme123")
+
+
+def provision_miniflux_user(username: str, password: str) -> Optional[dict]:
+    """通过 admin API 为租户创建独立 Miniflux 用户，返回 {user_id, api_key}"""
+    try:
+        # 创建用户
+        resp = requests.post(
+            f"{_ADMIN_URL}/v1/users",
+            auth=(_ADMIN_USER, _ADMIN_PASS),
+            json={"username": username, "password": password, "is_admin": False},
+            timeout=15,
+        )
+        if resp.status_code == 409:
+            log.info(f"Miniflux 用户 {username} 已存在")
+            # 查找已有用户
+            users_resp = requests.get(
+                f"{_ADMIN_URL}/v1/users",
+                auth=(_ADMIN_USER, _ADMIN_PASS),
+                timeout=15,
+            )
+            users_resp.raise_for_status()
+            for u in users_resp.json():
+                if u["username"] == username:
+                    return _ensure_api_key(u["id"])
+            return None
+        resp.raise_for_status()
+        user = resp.json()
+        return _ensure_api_key(user["id"])
+    except Exception as e:
+        log.error(f"创建 Miniflux 用户失败: {e}")
+        return None
+
+
+def _ensure_api_key(user_id: int) -> Optional[dict]:
+    """为用户创建 API key"""
+    try:
+        resp = requests.post(
+            f"{_ADMIN_URL}/v1/users/{user_id}/api-keys",
+            auth=(_ADMIN_USER, _ADMIN_PASS),
+            json={"description": "infohub-auto"},
+            timeout=15,
+        )
+        resp.raise_for_status()
+        key_data = resp.json()
+        return {"user_id": user_id, "api_key": key_data["api_key"]}
+    except Exception as e:
+        log.error(f"创建 Miniflux API key 失败: {e}")
+        return None
 
 
 class MinifluxClient:
@@ -93,7 +147,6 @@ class MinifluxClient:
             headers=self.headers,
             timeout=30,
         )
-        resp.raise_for_status()
         for cat in resp.json():
             if cat["title"] == name:
                 return cat["id"]
@@ -117,7 +170,6 @@ class MinifluxClient:
                 headers=self.headers,
                 timeout=30,
             )
-            resp.raise_for_status()
             existing_urls = {f["feed_url"] for f in resp.json()}
         except Exception:
             existing_urls = set()

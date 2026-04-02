@@ -9,11 +9,15 @@ COPY . .
 
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONIOENCODING=utf-8
+ENV APP_MODE="api"
 
 COPY entrypoint.sh /app/entrypoint.sh
 RUN sed -i 's/\r$//' /app/entrypoint.sh && chmod +x /app/entrypoint.sh
 
-HEALTHCHECK --interval=60s --timeout=5s --start-period=120s --retries=3 \
-  CMD pgrep -f "cron_runner.py" > /dev/null || exit 1
+RUN adduser --disabled-password --no-create-home appuser \
+    && mkdir -p /app/output \
+    && chown -R appuser:appuser /app
+
+USER appuser
 
 CMD ["/app/entrypoint.sh"]

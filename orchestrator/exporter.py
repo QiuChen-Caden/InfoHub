@@ -70,8 +70,11 @@ def _group_by_tag(items: List[NewsItem]) -> Dict[str, List[NewsItem]]:
 class HTMLExporter:
     """生成 HTML 交互报告 — 带目录、筛选、统计卡片"""
 
-    def __init__(self, output_dir: str):
-        self.output_dir = Path(output_dir) / "html"
+    def __init__(self, output_dir: str, tenant_id: str = ""):
+        base = Path(output_dir) / "html"
+        if tenant_id:
+            base = base / tenant_id
+        self.output_dir = base
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
     def generate(self, items: List[NewsItem], now: datetime,

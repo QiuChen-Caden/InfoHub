@@ -71,6 +71,18 @@ class Notifier:
 
         return success, fail
 
+    def get_active_channels(self) -> List[str]:
+        """返回已配置的通知渠道名称列表"""
+        channel_map = {
+            "telegram_bot_token": "telegram",
+            "feishu_webhook_url": "feishu",
+            "dingtalk_webhook_url": "dingtalk",
+            "email_from": "email",
+            "slack_webhook_url": "slack",
+        }
+        return [name for key, name in channel_map.items()
+                if self.config.get(key)]
+
     def _format_message(self, items: List[NewsItem], now: datetime,
                         summary: str = "") -> str:
         lines = [f"InfoHub {now.strftime('%m-%d %H:%M')} ({len(items)} 条)\n"]
