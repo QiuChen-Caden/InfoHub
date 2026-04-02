@@ -88,10 +88,10 @@ def load_config() -> dict:
 
     config = _resolve_env_vars(config)
 
-    # 本地运行时自动修正 Docker 路径
+    # 本地运行时自动修正 Docker 路径（容器内跳过）
     project_root = Path(__file__).parent.parent
     output_dir = config.get("output_dir", "")
-    if output_dir.startswith("/app/"):
+    if output_dir.startswith("/app/") and not Path("/app/config").exists():
         config["output_dir"] = str(project_root / output_dir[5:])
 
     # 加载兴趣标签

@@ -1,44 +1,38 @@
-platforms:
-  - toutiao
-  - baidu
-  - wallstreetcn-hot
-  - thepaper
-  - bilibili-hot-search
-  - cls-hot
-  - ifeng
-  - tieba
-  - weibo
-  - douyin
-  - zhihu
-
-miniflux_url: ${MINIFLUX_URL:-http://miniflux:8080}
-miniflux_api_key: ${MINIFLUX_API_KEY}
-
-rsshub_url: ${RSSHUB_URL:-http://rsshub:1200}
-
 ai:
-  model: ${AI_MODEL:-deepseek/deepseek-chat}
-  api_key: ${AI_API_KEY}
-  api_base: ${AI_API_BASE:-}
-  timeout: 120
-  max_tokens: 5000
-  batch_size: 200
+  api_base: ''
+  api_key: sk-e467146b9f954be2aad5f2d955451bac
   batch_interval: 2
+  batch_size: 200
+  max_tokens: 5000
   min_score: 0.7
+  model: deepseek/deepseek-chat
   summary_enabled: true
-
+  timeout: 120
+cron_schedule: '*/30 * * * *'
+miniflux_api_key: 96551dff06c68bcbeb404ef90f4023151af2dfcbb457794aae2ae2080aa69dce
+miniflux_url: http://miniflux:8080
 notification:
   batch_interval: 2
-  telegram_bot_token: ${TELEGRAM_BOT_TOKEN:-}
-  telegram_chat_id: ${TELEGRAM_CHAT_ID:-}
-  feishu_webhook_url: ${FEISHU_WEBHOOK_URL:-}
-  dingtalk_webhook_url: ${DINGTALK_WEBHOOK_URL:-}
-  email_from: ${EMAIL_FROM:-}
-  email_password: ${EMAIL_PASSWORD:-}
-  email_to: ${EMAIL_TO:-}
-  slack_webhook_url: ${SLACK_WEBHOOK_URL:-}
-
+  dingtalk_webhook_url: ''
+  email_from: ''
+  email_password: ''
+  email_to: ''
+  feishu_webhook_url: ''
+  slack_webhook_url: ''
+  telegram_bot_token: ''
+  telegram_chat_id: ''
+obsidian_vault_path: /obsidian
 output_dir: /app/output
-obsidian_vault_path: ${OBSIDIAN_VAULT_PATH:-}
-
-cron_schedule: ${CRON_SCHEDULE:-*/30 * * * *}
+platforms:
+- toutiao
+- baidu
+- wallstreetcn-hot
+- thepaper
+- bilibili-hot-search
+- cls-hot
+- ifeng
+- tieba
+- weibo
+- douyin
+- zhihu
+rsshub_url: http://rsshub:1200

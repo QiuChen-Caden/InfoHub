@@ -1,4 +1,4 @@
-import type { NewsItem, RunItem, Stats, ConfigData } from './types';
+import type { NewsItem, RunItem, Stats, ConfigData, ConfigUpdateRequest } from './types';
 
 const BASE = import.meta.env.VITE_API_BASE ?? '';
 
@@ -13,6 +13,19 @@ async function post<T>(path: string): Promise<T> {
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
     throw new Error(body.detail || `${res.status} ${res.statusText}`);
+  }
+  return res.json();
+}
+
+async function put<T>(path: string, body: unknown, headers?: Record<string, string>): Promise<T> {
+  const res = await fetch(`${BASE}${path}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...headers },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.detail || `${res.status} ${res.statusText}`);
   }
   return res.json();
 }
@@ -39,6 +52,8 @@ export const api = {
   newsSources: () => get<string[]>('/api/news/sources'),
   runs: (limit = 20) => get<RunItem[]>(`/api/runs?limit=${limit}`),
   config: () => get<ConfigData>('/api/config'),
+  saveConfig: (data: ConfigUpdateRequest, secret: string) =>
+    put<{ message: string }>('/api/config', data, { 'X-Config-Secret': secret }),
   triggerRun: () => post<{ message: string; triggered_at: string }>('/api/trigger'),
   triggerStatus: () => get<{ running: boolean; last_error: string; last_triggered: string }>('/api/trigger/status'),
 };

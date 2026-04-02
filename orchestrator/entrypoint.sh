@@ -1,20 +1,12 @@
-#!/bin/bash
+#!/bin/sh
 set -e
 
 MODE="${APP_MODE:-cron}"
 
 case "$MODE" in
   cron)
-    # 原有模式：cron 调度 pipeline
-    SCHEDULE="${CRON_SCHEDULE:-*/30 * * * *}"
-    echo "${SCHEDULE} cd /app && python main.py >> /var/log/orchestrator.log 2>&1" > /app/crontab
-
-    echo "[entrypoint] 调度配置: ${SCHEDULE}"
-    echo "[entrypoint] 先执行一次..."
-    cd /app && python main.py || true
-
-    echo "[entrypoint] 启动定时调度..."
-    exec supercronic /app/crontab
+    echo "[entrypoint] 启动 Python 调度模式..."
+    cd /app && exec python cron_runner.py
     ;;
   api)
     echo "[entrypoint] 启动 API 服务..."

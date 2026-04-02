@@ -5,6 +5,7 @@ json-repair==0.58.6
 tenacity==8.5.0
 feedparser==6.0.12
 schedule==1.2.2
+croniter==1.4.1
 miniflux==0.0.18
 psycopg2-binary==2.9.10
 fastapi==0.115.0

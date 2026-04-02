@@ -1,10 +1,7 @@
-#!/bin/bash
+#!/bin/sh
 set -e
 
-# Create the infohub database and user on the same postgres instance
-# This runs automatically on first postgres init via docker-entrypoint-initdb.d
-
-INFOHUB_PASS="${INFOHUB_DB_PASSWORD:-infohub_secret}"
+INFOHUB_PASS="${INFOHUB_DB_PASSWORD:?INFOHUB_DB_PASSWORD is required}"
 
 psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" \
   --set=infohub_pass="$INFOHUB_PASS" <<-'EOSQL'

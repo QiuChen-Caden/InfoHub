@@ -33,19 +33,85 @@ export interface Stats {
   rss_total: number;
 }
 
+export interface RSSHubFeed {
+  route: string;
+  name: string;
+  category: string;
+}
+
+export interface ExternalFeed {
+  url: string;
+  name: string;
+  category: string;
+}
+
 export interface ConfigData {
   platforms: string[];
   interests: string[];
   ai: {
     model: string;
+    api_key: string;
+    api_base: string;
     timeout: number;
     max_tokens: number;
     batch_size: number;
+    batch_interval: number;
     min_score: number;
     summary_enabled: boolean;
   };
   notification: {
     channels: string[];
+    batch_interval: number;
+    telegram_bot_token: string;
+    telegram_chat_id: string;
+    feishu_webhook_url: string;
+    dingtalk_webhook_url: string;
+    email_from: string;
+    email_password: string;
+    email_to: string;
+    slack_webhook_url: string;
+  };
+  sources: {
+    rsshub_feeds: RSSHubFeed[];
+    external_feeds: ExternalFeed[];
   };
   cron_schedule: string;
+  rsshub_url: string;
+  miniflux_url: string;
+  obsidian_vault_path: string;
+}
+
+export interface ConfigUpdateRequest {
+  platforms: string[];
+  interests: string[];
+  ai: {
+    model: string;
+    api_key: string;
+    api_base: string;
+    timeout: number;
+    max_tokens: number;
+    batch_size: number;
+    batch_interval: number;
+    min_score: number;
+    summary_enabled: boolean;
+  };
+  notification: {
+    batch_interval: number;
+    telegram_bot_token: string;
+    telegram_chat_id: string;
+    feishu_webhook_url: string;
+    dingtalk_webhook_url: string;
+    email_from: string;
+    email_password: string;
+    email_to: string;
+    slack_webhook_url: string;
+  };
+  sources: {
+    rsshub_feeds: RSSHubFeed[];
+    external_feeds: ExternalFeed[];
+  };
+  cron_schedule: string;
+  rsshub_url: string;
+  miniflux_url: string;
+  obsidian_vault_path: string;
 }

@@ -1,8 +1,10 @@
 """InfoHub REST API — 轻量 FastAPI 层，读取 pipeline 产出的数据"""
 
+import hmac
 import os
 import re
 import subprocess
+import tempfile
 import threading
 from contextlib import contextmanager
 from datetime import datetime
@@ -10,7 +12,7 @@ from pathlib import Path
 from typing import List, Optional
 
 import yaml
-from fastapi import FastAPI, Query, HTTPException
+from fastapi import FastAPI, Query, HTTPException, Header, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -85,6 +87,61 @@ class StatsOut(BaseModel):
     latest_run: Optional[str]
     hotlist_total: int
     rss_total: int
+
+
+# ---- PUT /api/config Pydantic 模型 ----
+
+class RSSHubFeedModel(BaseModel):
+    route: str
+    name: str
+    category: str
+
+
+class ExternalFeedModel(BaseModel):
+    url: str
+    name: str
+    category: str
+
+
+class SourcesInput(BaseModel):
+    rsshub_feeds: List[RSSHubFeedModel] = []
+    external_feeds: List[ExternalFeedModel] = []
+
+
+class AIInput(BaseModel):
+    model: str = ""
+    api_key: str = ""
+    api_base: str = ""
+    timeout: int = 120
+    max_tokens: int = 5000
+    batch_size: int = 200
+    batch_interval: int = 2
+    min_score: float = 0.7
+    summary_enabled: bool = True
+
+
+class NotificationInput(BaseModel):
+    batch_interval: int = 2
+    telegram_bot_token: str = ""
+    telegram_chat_id: str = ""
+    feishu_webhook_url: str = ""
+    dingtalk_webhook_url: str = ""
+    email_from: str = ""
+    email_password: str = ""
+    email_to: str = ""
+    slack_webhook_url: str = ""
+
+
+class ConfigInput(BaseModel):
+    platforms: List[str] = []
+    interests: List[str] = []
+    ai: AIInput = AIInput()
+    notification: NotificationInput = NotificationInput()
+    sources: SourcesInput = SourcesInput()
+    cron_schedule: str = ""
+    rsshub_url: str = ""
+    miniflux_url: str = ""
+    obsidian_vault_path: str = ""
 
 
 # ---- 路由 ----
@@ -228,6 +285,13 @@ def health():
 
 # ---- 配置端点 ----
 
+_SENSITIVE_KEYS = {
+    "api_key", "telegram_bot_token", "telegram_chat_id",
+    "feishu_webhook_url", "dingtalk_webhook_url",
+    "email_password", "slack_webhook_url",
+}
+
+
 def _mask(val: str) -> str:
     """脱敏：保留前4字符，其余用 * 替代"""
     if not val or len(val) <= 4:
@@ -235,32 +299,57 @@ def _mask(val: str) -> str:
     return val[:4] + "*" * (len(val) - 4)
 
 
-@app.get("/api/config")
-def get_config():
-    """返回脱敏后的配置信息"""
-    config_dir = Path(os.environ.get("CONFIG_DIR", "/app/config"))
-    config_path = config_dir / "config.yaml"
-    interests_path = config_dir / "interests.txt"
+def _is_masked(val: str) -> bool:
+    """判断值是否为脱敏占位（空字符串视为未修改）"""
+    return not val
 
+
+_CONFIG_SECRET = os.environ.get("CONFIG_SECRET", "")
+
+
+def _check_config_auth(x_config_secret: str = Header("", alias="X-Config-Secret")):
+    """校验配置写入权限：需要 CONFIG_SECRET 环境变量和请求头匹配"""
+    if not _CONFIG_SECRET:
+        raise HTTPException(status_code=403, detail="CONFIG_SECRET not set on server, config write disabled")
+    if not hmac.compare_digest(x_config_secret, _CONFIG_SECRET):
+        raise HTTPException(status_code=403, detail="Invalid config secret")
+
+
+def _load_raw_config(config_dir: Path):
+    """加载并解析 config.yaml（解析环境变量占位符）"""
+    config_path = config_dir / "config.yaml"
     if not config_path.exists():
         raise HTTPException(status_code=404, detail="config.yaml not found")
-
     raw = config_path.read_text(encoding="utf-8")
-    # 解析环境变量占位符，对含 YAML 特殊字符的值加引号
+
     def _resolve(m: re.Match) -> str:
         var, default = m.group(1), m.group(3) or ""
         val = os.environ.get(var, default)
         if val and any(c in val for c in '*{}[]&!|>%@`'):
             return '"' + val.replace('"', '\\"') + '"'
         return val
-    resolved = re.sub(r"\$\{(\w+)(:-([^}]*))?\}", _resolve, raw)
-    cfg = yaml.safe_load(resolved)
 
+    resolved = re.sub(r"\$\{(\w+)(:-([^}]*))?\}", _resolve, raw)
+    return yaml.safe_load(resolved) or {}
+
+
+@app.get("/api/config")
+def get_config():
+    """返回脱敏后的完整配置信息"""
+    config_dir = Path(os.environ.get("CONFIG_DIR", "/app/config"))
+    cfg = _load_raw_config(config_dir)
+
+    interests_path = config_dir / "interests.txt"
     interests: list[str] = []
     if interests_path.exists():
         interests = [l.strip() for l in interests_path.read_text(encoding="utf-8").splitlines() if l.strip()]
 
-    # 检测已配置的通知渠道
+    sources_path = config_dir / "sources.yaml"
+    sources_data = {}
+    if sources_path.exists():
+        sources_data = yaml.safe_load(sources_path.read_text(encoding="utf-8")) or {}
+
+    # 通知渠道列表（兼容旧前端）
     notif = cfg.get("notification", {})
     channels = []
     channel_keys = {
@@ -280,15 +369,125 @@ def get_config():
         "interests": interests,
         "ai": {
             "model": ai.get("model", ""),
+            "api_key": _mask(ai.get("api_key", "")),
+            "api_base": ai.get("api_base", ""),
             "timeout": ai.get("timeout", 0),
             "max_tokens": ai.get("max_tokens", 0),
             "batch_size": ai.get("batch_size", 0),
+            "batch_interval": ai.get("batch_interval", 0),
             "min_score": ai.get("min_score", 0),
             "summary_enabled": ai.get("summary_enabled", False),
         },
-        "notification": {"channels": channels},
+        "notification": {
+            "channels": channels,
+            "batch_interval": notif.get("batch_interval", 0),
+            "telegram_bot_token": _mask(notif.get("telegram_bot_token", "")),
+            "telegram_chat_id": _mask(notif.get("telegram_chat_id", "")),
+            "feishu_webhook_url": _mask(notif.get("feishu_webhook_url", "")),
+            "dingtalk_webhook_url": _mask(notif.get("dingtalk_webhook_url", "")),
+            "email_from": notif.get("email_from", ""),
+            "email_password": _mask(notif.get("email_password", "")),
+            "email_to": notif.get("email_to", ""),
+            "slack_webhook_url": _mask(notif.get("slack_webhook_url", "")),
+        },
+        "sources": {
+            "rsshub_feeds": sources_data.get("rsshub_feeds", []),
+            "external_feeds": sources_data.get("external_feeds", []),
+        },
         "cron_schedule": cfg.get("cron_schedule", ""),
+        "rsshub_url": cfg.get("rsshub_url", ""),
+        "miniflux_url": cfg.get("miniflux_url", ""),
+        "obsidian_vault_path": cfg.get("obsidian_vault_path", ""),
     }
+
+
+def _atomic_write(path: Path, content: str):
+    """原子写入：先写临时文件再 rename"""
+    fd, tmp = tempfile.mkstemp(dir=str(path.parent), suffix=".tmp")
+    try:
+        os.write(fd, content.encode("utf-8"))
+        os.close(fd)
+        fd = -1
+        os.replace(tmp, str(path))
+    except Exception:
+        if fd >= 0:
+            os.close(fd)
+        if os.path.exists(tmp):
+            os.unlink(tmp)
+        raise
+
+
+@app.put("/api/config", dependencies=[Depends(_check_config_auth)])
+def update_config(body: ConfigInput):
+    """保存配置，敏感字段为空或脱敏值时保留原值"""
+    config_dir = Path(os.environ.get("CONFIG_DIR", "/app/config"))
+    cfg = _load_raw_config(config_dir)
+
+    # ---- 合并 config.yaml ----
+    ai_orig = cfg.get("ai", {})
+    notif_orig = cfg.get("notification", {})
+
+    # 敏感字段：空值或脱敏格式 → 保留原值
+    def _merge_sensitive(new_val: str, orig_val) -> str:
+        if _is_masked(new_val):
+            return orig_val if orig_val else ""
+        return new_val
+
+    new_cfg = {
+        "platforms": body.platforms,
+        "miniflux_url": body.miniflux_url or cfg.get("miniflux_url", ""),
+        "miniflux_api_key": cfg.get("miniflux_api_key", ""),
+        "rsshub_url": body.rsshub_url or cfg.get("rsshub_url", ""),
+        "ai": {
+            "model": body.ai.model,
+            "api_key": _merge_sensitive(body.ai.api_key, ai_orig.get("api_key", "")),
+            "api_base": body.ai.api_base,
+            "timeout": body.ai.timeout,
+            "max_tokens": body.ai.max_tokens,
+            "batch_size": body.ai.batch_size,
+            "batch_interval": body.ai.batch_interval,
+            "min_score": body.ai.min_score,
+            "summary_enabled": body.ai.summary_enabled,
+        },
+        "notification": {
+            "batch_interval": body.notification.batch_interval,
+            "telegram_bot_token": _merge_sensitive(
+                body.notification.telegram_bot_token, notif_orig.get("telegram_bot_token", "")),
+            "telegram_chat_id": _merge_sensitive(
+                body.notification.telegram_chat_id, notif_orig.get("telegram_chat_id", "")),
+            "feishu_webhook_url": _merge_sensitive(
+                body.notification.feishu_webhook_url, notif_orig.get("feishu_webhook_url", "")),
+            "dingtalk_webhook_url": _merge_sensitive(
+                body.notification.dingtalk_webhook_url, notif_orig.get("dingtalk_webhook_url", "")),
+            "email_from": body.notification.email_from,
+            "email_password": _merge_sensitive(
+                body.notification.email_password, notif_orig.get("email_password", "")),
+            "email_to": body.notification.email_to,
+            "slack_webhook_url": _merge_sensitive(
+                body.notification.slack_webhook_url, notif_orig.get("slack_webhook_url", "")),
+        },
+        "output_dir": cfg.get("output_dir", "/app/output"),
+        "obsidian_vault_path": body.obsidian_vault_path or cfg.get("obsidian_vault_path", ""),
+        "cron_schedule": body.cron_schedule,
+    }
+
+    try:
+        # 写 config.yaml
+        _atomic_write(config_dir / "config.yaml", yaml.dump(new_cfg, allow_unicode=True, default_flow_style=False))
+
+        # 写 sources.yaml
+        sources_dict = {
+            "rsshub_feeds": [f.model_dump() for f in body.sources.rsshub_feeds],
+            "external_feeds": [f.model_dump() for f in body.sources.external_feeds],
+        }
+        _atomic_write(config_dir / "sources.yaml", yaml.dump(sources_dict, allow_unicode=True, default_flow_style=False))
+
+        # 写 interests.txt
+        _atomic_write(config_dir / "interests.txt", "\n".join(body.interests) + "\n" if body.interests else "")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to write config: {e}")
+
+    return {"message": "Config saved"}
 
 
 # ---- 手动触发运行 ----

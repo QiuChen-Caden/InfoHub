@@ -93,6 +93,7 @@ class MinifluxClient:
             headers=self.headers,
             timeout=30,
         )
+        resp.raise_for_status()
         for cat in resp.json():
             if cat["title"] == name:
                 return cat["id"]
@@ -116,6 +117,7 @@ class MinifluxClient:
                 headers=self.headers,
                 timeout=30,
             )
+            resp.raise_for_status()
             existing_urls = {f["feed_url"] for f in resp.json()}
         except Exception:
             existing_urls = set()
