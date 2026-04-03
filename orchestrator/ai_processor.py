@@ -7,10 +7,14 @@ from typing import List
 
 from json_repair import repair_json
 from litellm import completion
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
 from models import NewsItem
 
 log = logging.getLogger("infohub.ai")
+
+# LLM 调用可重试的异常类型
+_RETRYABLE = (ConnectionError, TimeoutError, OSError)
 
 
 class AIProcessor:
@@ -24,8 +28,16 @@ class AIProcessor:
         self.batch_interval = config.get("batch_interval", 2)
         self.min_score = config.get("min_score", 0.7)
 
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=2, min=2, max=30),
+        retry=retry_if_exception_type(_RETRYABLE),
+        reraise=True,
+        before_sleep=lambda retry_state: log.warning(f"LLM 重试 #{retry_state.attempt_number}, 等待 {retry_state.next_action.sleep:.0f}s"),
+    )
     def _call_llm(self, system_prompt: str, user_prompt: str) -> str:
-        """统一 LLM 调用"""
+        """统一 LLM 调用，带重试"""
+        t0 = time.time()
         resp = completion(
             model=self.model,
             api_key=self.api_key,
@@ -37,6 +49,8 @@ class AIProcessor:
                 {"role": "user", "content": user_prompt},
             ],
         )
+        elapsed = time.time() - t0
+        log.info(f"LLM 调用 {self.model} 耗时 {elapsed:.1f}s")
         return resp.choices[0].message.content
 
     def filter_by_interest(self, items: List[NewsItem],
@@ -45,6 +59,8 @@ class AIProcessor:
         if not self.api_key:
             log.warning("未配置 AI API Key，跳过 AI 筛选，返回全部")
             return items
+
+        log.info(f"AI 筛选开始: {len(items)} 条, {len(interests)} 个标签, 分 {(len(items) + self.batch_size - 1) // self.batch_size} 批")
 
         tags_str = "\n".join(f"- {t}" for t in interests)
         tags_list_str = "、".join(interests)
@@ -102,6 +118,8 @@ class AIProcessor:
             f"- [{it.source}] {it.title} (标签: {','.join(it.tags)})"
             for it in items[:150]
         )
+        if len(items) > 150:
+            log.warning(f"AI 摘要截断: 共 {len(items)} 条，仅取前 150 条")
 
         system = (
             "你是趋势分析专家。对以下新闻进行分析：\n"
@@ -112,7 +130,11 @@ class AIProcessor:
         )
 
         try:
-            return self._call_llm(system, titles)
+            t0 = time.time()
+            result = self._call_llm(system, titles)
+            elapsed = time.time() - t0
+            log.info(f"AI 摘要生成耗时 {elapsed:.1f}s, {len(items)} 条输入")
+            return result
         except Exception as e:
             log.error(f"AI 摘要失败: {e}")
             return ""
@@ -128,13 +150,55 @@ class AIProcessor:
                 f"翻译结果必须在30字以内。",
                 text,
             )
-            # 校验：翻译结果不应比原文长3倍，否则说明模型在胡说
             result = result.strip().strip('"').strip("'")
             if len(result) > len(text) * 3 or "\n" in result:
                 return text
             return result
-        except Exception:
+        except Exception as e:
+            log.debug(f"单条翻译失败: {e}")
             return text
+
+    def translate_batch(self, titles: list[str], target_lang: str = "中文") -> list[str]:
+        """批量翻译标题，一次 LLM 调用翻译多条"""
+        if not self.api_key or not titles:
+            return titles
+
+        log.info(f"批量翻译: {len(titles)} 条, 分 {(len(titles) + 19) // 20} 批")
+
+        results = list(titles)  # 默认保持原文
+        for i in range(0, len(titles), 20):
+            batch = titles[i:i + 20]
+            numbered = "\n".join(f"{j+1}. {t}" for j, t in enumerate(batch))
+            try:
+                raw = self._call_llm(
+                    f"你是翻译器。将以下编号标题逐条翻译为{target_lang}。\n"
+                    f"【规则】\n"
+                    f"1. 每行输出格式: 编号. 翻译结果\n"
+                    f"2. 只输出翻译，不解释\n"
+                    f"3. 每条翻译不超过30字\n"
+                    f"4. 保持编号顺序一致",
+                    numbered,
+                )
+                for line in raw.strip().split("\n"):
+                    line = line.strip()
+                    if not line:
+                        continue
+                    # 解析 "1. 翻译结果"
+                    dot_pos = line.find(".")
+                    if dot_pos > 0 and dot_pos <= 3:
+                        try:
+                            idx = int(line[:dot_pos]) - 1
+                            translated = line[dot_pos+1:].strip().strip('"').strip("'")
+                            if 0 <= idx < len(batch) and translated and len(translated) <= len(batch[idx]) * 3:
+                                results[i + idx] = translated
+                        except ValueError:
+                            continue
+            except Exception as e:
+                log.warning(f"批量翻译失败: {e}, 跳过该批次")
+
+        translated_count = sum(1 for orig, res in zip(titles, results) if orig != res)
+        log.info(f"批量翻译完成: {translated_count}/{len(titles)} 条实际翻译")
+        return results
 
 
 def _keyword_fallback(items: List[NewsItem],

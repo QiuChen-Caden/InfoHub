@@ -13,23 +13,41 @@ if [ -z "$ENCRYPTION_KEY" ]; then
     fi
 fi
 
-# 生成 JWT 密钥
+# 预先生成所有密码（避免 heredoc 内 command substitution 失败静默）
 JWT_SECRET=$(openssl rand -hex 32 2>/dev/null || python3 -c "import secrets; print(secrets.token_hex(32))")
+POSTGRES_PASSWORD=$(openssl rand -hex 16 2>/dev/null || python3 -c "import secrets; print(secrets.token_hex(16))")
+MINIFLUX_DB_PASSWORD=$(openssl rand -hex 16 2>/dev/null || python3 -c "import secrets; print(secrets.token_hex(16))")
+MINIFLUX_PASSWORD=$(openssl rand -hex 8 2>/dev/null || python3 -c "import secrets; print(secrets.token_hex(8))")
+REDIS_PASSWORD=$(openssl rand -hex 16 2>/dev/null || python3 -c "import secrets; print(secrets.token_hex(16))")
+
+# 验证所有密码生成成功
+for var_name in JWT_SECRET POSTGRES_PASSWORD MINIFLUX_DB_PASSWORD MINIFLUX_PASSWORD REDIS_PASSWORD ENCRYPTION_KEY; do
+    eval val=\$$var_name
+    if [ -z "$val" ]; then
+        echo "错误: $var_name 生成失败"
+        exit 1
+    fi
+done
 
 # 创建 .env 文件
 if [ ! -f .env ]; then
     cat > .env << EOF
-POSTGRES_PASSWORD=$(openssl rand -hex 16 2>/dev/null || python3 -c "import secrets; print(secrets.token_hex(16))")
-MINIFLUX_DB_PASSWORD=$(openssl rand -hex 16 2>/dev/null || python3 -c "import secrets; print(secrets.token_hex(16))")
+POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+MINIFLUX_DB_PASSWORD=${MINIFLUX_DB_PASSWORD}
+REDIS_PASSWORD=${REDIS_PASSWORD}
 JWT_SECRET=${JWT_SECRET}
 ENCRYPTION_KEY=${ENCRYPTION_KEY}
 MINIFLUX_ADMIN=admin
-MINIFLUX_PASSWORD=$(openssl rand -hex 8 2>/dev/null || python3 -c "import secrets; print(secrets.token_hex(8))")
+MINIFLUX_PASSWORD=${MINIFLUX_PASSWORD}
 MINIFLUX_API_KEY=
-MINIO_USER=infohub
-MINIO_PASSWORD=$(openssl rand -hex 16 2>/dev/null || python3 -c "import secrets; print(secrets.token_hex(16))")
+AI_API_KEY=
+AI_MODEL=deepseek/deepseek-chat
+AI_API_BASE=
+BOOTSTRAP_EMAIL=admin@example.com
+BOOTSTRAP_PASSWORD=
 EOF
-    echo "已生成 .env 文件，请检查并填写 MINIFLUX_API_KEY"
+    chmod 600 .env
+    echo "已生成 .env 文件（权限 600），请检查并填写必要配置"
 else
     echo ".env 文件已存在，跳过"
 fi
@@ -39,9 +57,7 @@ mkdir -p output
 
 echo ""
 echo "=== 初始化完成 ==="
-echo "1. 编辑 .env 填写必要配置"
-echo "2. 启动服务: docker compose -f docker-compose.private.yml up -d"
-echo "3. 获取 Miniflux API Key 后填入 .env"
-echo "4. 重启: docker compose -f docker-compose.private.yml restart"
-echo "5. 访问 API: http://localhost:8000/health"
-echo "6. 注册用户: POST http://localhost:8000/api/v1/auth/register"
+echo "1. 编辑 .env 填写 BOOTSTRAP_PASSWORD 和 AI_API_KEY"
+echo "2. 启动服务: docker compose up -d"
+echo "3. 访问 API: http://localhost:8500/health"
+echo "4. 注册用户: POST http://localhost:8500/api/v1/auth/register"

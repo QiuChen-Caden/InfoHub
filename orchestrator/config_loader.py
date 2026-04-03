@@ -106,6 +106,7 @@ async def _load_secrets(session: AsyncSession, tenant_id: UUID) -> dict:
             secrets[s.key_name] = decrypt(s.encrypted_value)
         except Exception as e:
             log.error(f"解密密钥 {s.key_name} 失败: {e}")
+    log.info(f"加载 {len(secrets)} 个租户密钥")
     return secrets
 
 
@@ -163,6 +164,8 @@ def load_config_from_yaml() -> dict:
 
     config = _resolve_env_vars(config)
 
+    log.info(f"YAML 配置加载: {config_path}")
+
     # 加载兴趣标签
     interests_path = os.environ.get(
         "INTERESTS_PATH",
@@ -177,5 +180,10 @@ def load_config_from_yaml() -> dict:
     if Path(sources_path).exists():
         with open(sources_path, "r", encoding="utf-8") as f:
             config["sources"] = yaml.safe_load(f)
+
+    interests_count = len(config.get("interests", []))
+    sources = config.get("sources", {})
+    feeds_count = len(sources.get("rsshub_feeds", [])) + len(sources.get("external_feeds", []))
+    log.info(f"YAML 配置详情: {interests_count} 个兴趣标签, {feeds_count} 个 RSS 源")
 
     return config

@@ -2,6 +2,7 @@
 
 import os
 import uuid
+import time
 import logging
 
 from sqlalchemy import select, func
@@ -26,14 +27,17 @@ async def bootstrap_from_yaml(session: AsyncSession):
       BOOTSTRAP_PASSWORD=your-password
     """
     if not BOOTSTRAP_EMAIL or not BOOTSTRAP_PASSWORD:
+        log.debug("引导跳过: BOOTSTRAP_EMAIL 未设置")
         return
 
     # 检查是否已有租户
     result = await session.execute(select(func.count(Tenant.id)))
     count = result.scalar() or 0
     if count > 0:
+        log.info(f"引导跳过: 已有 {count} 个租户")
         return
 
+    t0 = time.time()
     log.info("首次启动，从 YAML 配置引导创建租户...")
 
     try:
@@ -110,4 +114,5 @@ async def bootstrap_from_yaml(session: AsyncSession):
         ))
 
     await session.commit()
-    log.info(f"引导完成: 租户 {tenant_id} ({BOOTSTRAP_EMAIL})")
+    elapsed = time.time() - t0
+    log.info(f"引导完成: 租户 {tenant_id} ({BOOTSTRAP_EMAIL}), 耗时 {elapsed:.1f}s")

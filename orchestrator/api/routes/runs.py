@@ -1,5 +1,6 @@
 """运行管理 API"""
 
+import logging
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from typing import Optional
@@ -9,6 +10,7 @@ from db import get_session, Database
 from models_db import Tenant
 from api.auth import get_current_tenant
 
+log = logging.getLogger("infohub.runs")
 router = APIRouter()
 
 
@@ -27,7 +29,7 @@ class RunResponse(BaseModel):
 
 @router.get("")
 async def list_runs(
-    limit: int = Query(20, le=100),
+    limit: int = Query(20, ge=1, le=100),
     tenant: Tenant = Depends(get_current_tenant),
     session: AsyncSession = Depends(get_session),
 ):
@@ -55,7 +57,19 @@ async def trigger_run(
     tenant: Tenant = Depends(get_current_tenant),
     session: AsyncSession = Depends(get_session),
 ):
-    """手动触发一次运行"""
-    from tasks import run_pipeline
-    run_pipeline.delay(str(tenant.id))
-    return {"ok": True, "message": "任务已提交"}
+    """手动触发一次运行 — 先在 DB 创建 RunHistory 行，再提交 Celery 任务"""
+    db = Database(session, tenant.id)
+    run_id = await db.start_run()
+    await session.commit()
+
+    log.info(f"手动触发运行: tenant={tenant.id} run_id={run_id}")
+    try:
+        from tasks import run_pipeline
+        run_pipeline.delay(str(tenant.id), run_id)
+    except Exception as e:
+        log.error(f"任务提交失败: tenant={tenant.id} run_id={run_id}: {e}")
+        # 标记该运行为失败，避免永久 "运行中" 状态
+        await db.finish_run(run_id, errors=f"任务提交失败: {e}")
+        await session.commit()
+        raise HTTPException(status_code=503, detail="任务队列不可用，请稍后重试")
+    return {"ok": True, "message": "任务已提交", "run_id": run_id}

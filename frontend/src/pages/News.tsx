@@ -56,28 +56,19 @@ export default function News() {
 
   return (
     <div className="space-y-2">
-      {/* Filter bar */}
       <div className="bb-panel">
         <div className="bb-panel-header">NEWS FILTER</div>
         <div className="bb-panel-body flex flex-wrap gap-x-3 gap-y-2 items-end">
           <div>
             <label className="block text-xs text-accent/70 mb-0.5">SOURCE</label>
-            <select
-              value={source}
-              onChange={(e) => { setSource(e.target.value); resetAndSearch(); }}
-              className={inputCls}
-            >
+            <select value={source} onChange={(e) => { setSource(e.target.value); resetAndSearch(); }} className={inputCls}>
               <option value="">ALL</option>
               {sources.map((s) => <option key={s} value={s}>{s}</option>)}
             </select>
           </div>
           <div>
             <label className="block text-xs text-accent/70 mb-0.5">TYPE</label>
-            <select
-              value={sourceType}
-              onChange={(e) => { setSourceType(e.target.value); resetAndSearch(); }}
-              className={inputCls}
-            >
+            <select value={sourceType} onChange={(e) => { setSourceType(e.target.value); resetAndSearch(); }} className={inputCls}>
               <option value="">ALL</option>
               <option value="hotlist">HOTLIST</option>
               <option value="rss">RSS</option>
@@ -99,14 +90,9 @@ export default function News() {
           </div>
           <div>
             <label className="block text-xs text-accent/70 mb-0.5">TAG</label>
-            <input
-              type="text"
-              value={tag}
-              onChange={(e) => setTag(e.target.value)}
+            <input type="text" value={tag} onChange={(e) => setTag(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && resetAndSearch()}
-              placeholder="search tags..."
-              className={`${inputCls} w-36`}
-            />
+              placeholder="search tags..." className={`${inputCls} w-36`} />
           </div>
           <div>
             <label className="block text-xs text-accent/70 mb-0.5">TIME</label>
@@ -120,16 +106,12 @@ export default function News() {
                 className={inputCls} />
             </div>
           </div>
-          <button
-            onClick={() => { setOffset(0); load(); }}
-            className="px-3 py-1 bg-accent text-black text-xs font-bold hover:bg-accent/80 transition-colors"
-          >
+          <button onClick={() => { setOffset(0); load(); }}
+            className="px-3 py-1 bg-accent text-black text-xs font-bold hover:bg-accent/80 transition-colors">
             [ SEARCH ]
           </button>
-          <button
-            onClick={clearFilters}
-            className="px-3 py-1 border border-border text-accent/70 text-xs hover:text-accent hover:border-accent transition-colors"
-          >
+          <button onClick={clearFilters}
+            className="px-3 py-1 border border-border text-accent/70 text-xs hover:text-accent hover:border-accent transition-colors">
             [ CLEAR ]
           </button>
         </div>
@@ -145,23 +127,14 @@ export default function News() {
         </div>
       </div>
 
-      {/* Pagination */}
       <div className="flex gap-2 items-center text-xs">
-        <button
-          disabled={offset === 0}
-          onClick={() => setOffset(Math.max(0, offset - PAGE_SIZE))}
-          className="px-2 py-1 border border-border text-accent disabled:opacity-30 hover:bg-accent/10"
-        >
+        <button disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - PAGE_SIZE))}
+          className="px-2 py-1 border border-border text-accent disabled:opacity-30 hover:bg-accent/10">
           &lt; PREV
         </button>
-        <span className="text-accent/50">
-          {offset + 1}–{offset + items.length}
-        </span>
-        <button
-          disabled={items.length < PAGE_SIZE}
-          onClick={() => setOffset(offset + PAGE_SIZE)}
-          className="px-2 py-1 border border-border text-accent disabled:opacity-30 hover:bg-accent/10"
-        >
+        <span className="text-accent/50">{offset + 1}–{offset + items.length}</span>
+        <button disabled={items.length < PAGE_SIZE} onClick={() => setOffset(offset + PAGE_SIZE)}
+          className="px-2 py-1 border border-border text-accent disabled:opacity-30 hover:bg-accent/10">
           NEXT &gt;
         </button>
       </div>

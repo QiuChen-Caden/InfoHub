@@ -1,6 +1,8 @@
 """HTML 报告 + Obsidian 知识库导出"""
 
+import os
 import logging
+import tempfile
 from html import escape
 from pathlib import Path
 from datetime import datetime
@@ -10,6 +12,27 @@ from collections import Counter
 from models import NewsItem
 
 log = logging.getLogger("infohub.export")
+
+
+def _atomic_write(filepath: Path, content: str):
+    """原子写入：先写临时文件，再 rename，防止并发写入损坏"""
+    filepath.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_path = tempfile.mkstemp(
+        dir=str(filepath.parent), suffix=".tmp", prefix=".write_"
+    )
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(content)
+        # Windows 需要先删除目标文件
+        if os.name == "nt" and filepath.exists():
+            filepath.unlink()
+        os.replace(tmp_path, str(filepath))
+    except Exception:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise
 
 
 class ObsidianExporter:
@@ -105,7 +128,7 @@ class HTMLExporter:
         filepath.write_text(html, encoding="utf-8")
         latest_dir = self.output_dir / "latest"
         latest_dir.mkdir(exist_ok=True)
-        (latest_dir / "current.html").write_text(html, encoding="utf-8")
+        _atomic_write(latest_dir / "current.html", html)
         log.info(f"HTML 报告: {filepath}")
 
     def _stats_html(self, items, by_tag, sources):

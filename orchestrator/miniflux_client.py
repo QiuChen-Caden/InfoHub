@@ -2,6 +2,7 @@
 
 import hashlib
 import logging
+import time
 import requests
 from typing import List, Optional
 
@@ -67,21 +68,37 @@ def _ensure_api_key(user_id: int) -> Optional[dict]:
 class MinifluxClient:
     def __init__(self, base_url: str, api_key: str):
         self.base_url = base_url.rstrip("/")
-        self.headers = {
-            "X-Auth-Token": api_key,
-            "Content-Type": "application/json",
-        }
-        self._available = bool(api_key)
+        self.headers = {"Content-Type": "application/json"}
+        self._auth = None
+        if api_key:
+            self.headers["X-Auth-Token"] = api_key
+            self._available = True
+        elif os.environ.get("SINGLE_TENANT") == "true":
+            # 仅限私有化单租户部署：回退到 admin basic auth
+            admin_user = os.environ.get("MINIFLUX_ADMIN", "")
+            admin_pass = os.environ.get("MINIFLUX_PASSWORD", "")
+            if admin_user and admin_pass:
+                self._auth = (admin_user, admin_pass)
+                self._available = True
+                log.warning("Miniflux: 单租户模式 admin basic auth 回退")
+            else:
+                self._available = False
+                log.warning("Miniflux API Key 未配置，RSS 功能已禁用")
+        else:
+            self._available = False
+            log.warning("Miniflux API Key 未配置，RSS 功能已禁用")
 
     def fetch_unread_entries(self, limit: int = 200) -> List[NewsItem]:
         """拉取未读条目，转为统一 NewsItem"""
         if not self._available:
             log.warning("Miniflux API Key 未配置，跳过 RSS 拉取")
             return []
+        t0 = time.time()
         try:
             resp = requests.get(
                 f"{self.base_url}/v1/entries",
                 headers=self.headers,
+                auth=self._auth,
                 params={
                     "status": "unread",
                     "limit": limit,
@@ -111,6 +128,8 @@ class MinifluxClient:
             )
             item._miniflux_id = entry["id"]
             items.append(item)
+        elapsed = time.time() - t0
+        log.info(f"Miniflux 拉取 {len(items)} 条未读, 耗时 {elapsed:.1f}s")
         return items
 
     def mark_as_read(self, entry_ids: List[int]):
@@ -121,6 +140,7 @@ class MinifluxClient:
             resp = requests.put(
                 f"{self.base_url}/v1/entries",
                 headers=self.headers,
+                auth=self._auth,
                 json={"entry_ids": entry_ids, "status": "read"},
                 timeout=30,
             )
@@ -134,6 +154,7 @@ class MinifluxClient:
         resp = requests.post(
             f"{self.base_url}/v1/feeds",
             headers=self.headers,
+            auth=self._auth,
             json={"feed_url": feed_url, "category_id": category_id},
             timeout=30,
         )
@@ -141,22 +162,43 @@ class MinifluxClient:
         return resp.json()["feed_id"]
 
     def ensure_category(self, name: str) -> int:
-        """获取或创建分类"""
-        resp = requests.get(
-            f"{self.base_url}/v1/categories",
-            headers=self.headers,
-            timeout=30,
-        )
-        for cat in resp.json():
-            if cat["title"] == name:
-                return cat["id"]
-        resp = requests.post(
-            f"{self.base_url}/v1/categories",
-            headers=self.headers,
-            json={"title": name},
-            timeout=30,
-        )
-        return resp.json()["id"]
+        """获取或创建分类（先尝试创建，处理 409 竞态）"""
+        try:
+            resp = requests.post(
+                f"{self.base_url}/v1/categories",
+                headers=self.headers,
+                auth=self._auth,
+                json={"title": name},
+                timeout=30,
+            )
+            if resp.status_code == 409:
+                # 已存在，查找 ID
+                list_resp = requests.get(
+                    f"{self.base_url}/v1/categories",
+                    headers=self.headers,
+                    auth=self._auth,
+                    timeout=30,
+                )
+                list_resp.raise_for_status()
+                for cat in list_resp.json():
+                    if cat["title"] == name:
+                        return cat["id"]
+                raise RuntimeError(f"分类 {name} 创建返回 409 但查找不到")
+            resp.raise_for_status()
+            return resp.json()["id"]
+        except requests.RequestException:
+            # 回退：直接查找
+            resp = requests.get(
+                f"{self.base_url}/v1/categories",
+                headers=self.headers,
+                auth=self._auth,
+                timeout=30,
+            )
+            resp.raise_for_status()
+            for cat in resp.json():
+                if cat["title"] == name:
+                    return cat["id"]
+            raise
 
     def register_sources(self, sources_config: dict, rsshub_url: str):
         """自动注册 RSSHub 路由和外部 RSS 到 Miniflux"""
@@ -168,10 +210,12 @@ class MinifluxClient:
             resp = requests.get(
                 f"{self.base_url}/v1/feeds",
                 headers=self.headers,
+                auth=self._auth,
                 timeout=30,
             )
             existing_urls = {f["feed_url"] for f in resp.json()}
-        except Exception:
+        except Exception as e:
+            log.warning(f"获取已有 feeds 失败: {e}, 将尝试注册全部")
             existing_urls = set()
 
         # 注册 RSSHub 路由

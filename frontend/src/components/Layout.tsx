@@ -1,5 +1,8 @@
 import { NavLink, Outlet, useNavigate } from 'react-router';
 import { useEffect, useState } from 'react';
+import { api } from '../api';
+import { clearToken } from '../auth';
+import type { User } from '../types';
 
 const links = [
   { to: '/', label: 'DASH', key: 'F1', num: 1 },
@@ -7,6 +10,7 @@ const links = [
   { to: '/runs', label: 'RUNS', key: 'F3', num: 3 },
   { to: '/config', label: 'CONF', key: 'F4', num: 4 },
   { to: '/usage', label: 'USAGE', key: 'F5', num: 5 },
+  { to: '/logs', label: 'LOGS', key: 'F6', num: 6 },
 ];
 
 function UtcClock() {
@@ -25,10 +29,26 @@ function UtcClock() {
 
 export default function Layout() {
   const navigate = useNavigate();
+  const [user, setUser] = useState<User | null>(null);
+  const [connected, setConnected] = useState(true);
+
+  useEffect(() => {
+    api.me().then(setUser).catch(() => {});
+
+    // 定期检查 API 连通性
+    const checkHealth = () => {
+      fetch('/health')
+        .then(r => setConnected(r.ok))
+        .catch(() => setConnected(false));
+    };
+    checkHealth();
+    const hid = setInterval(checkHealth, 30000);
+    return () => clearInterval(hid);
+  }, []);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      const idx = ['F1','F2','F3','F4','F5'].indexOf(e.key);
+      const idx = ['F1','F2','F3','F4','F5','F6'].indexOf(e.key);
       if (idx !== -1) {
         e.preventDefault();
         navigate(links[idx].to);
@@ -37,6 +57,11 @@ export default function Layout() {
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   }, [navigate]);
+
+  const logout = () => {
+    clearToken();
+    navigate('/login', { replace: true });
+  };
 
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-bg">
@@ -66,7 +91,9 @@ export default function Layout() {
           ))}
         </nav>
 
-        <div className="ml-auto">
+        <div className="ml-auto flex items-center gap-3">
+          {user && <span className="text-accent/60 text-xs">{user.email}</span>}
+          <button onClick={logout} className="text-negative text-xs hover:text-red-400 cursor-pointer">LOGOUT</button>
           <UtcClock />
         </div>
       </header>
@@ -78,9 +105,11 @@ export default function Layout() {
 
       {/* Bottom status bar */}
       <footer className="bg-card border-t border-border px-2 py-0.5 flex items-center justify-between text-xs shrink-0">
-        <span className="text-accent/50">INFOHUB v1.0</span>
-        <span className="text-accent/50">F1-F5 NAV | ESC CANCEL</span>
-        <span className="text-positive">CONNECTED</span>
+        <span className="text-accent/50">INFOHUB v2.0</span>
+        <span className="text-accent/50">F1-F6 NAV | ESC CANCEL</span>
+        <span className={connected ? "text-positive" : "text-negative"}>
+          {connected ? "CONNECTED" : "DISCONNECTED"}
+        </span>
       </footer>
     </div>
   );

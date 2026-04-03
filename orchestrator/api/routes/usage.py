@@ -1,5 +1,7 @@
 """用量查询 API"""
 
+import logging
+
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -8,6 +10,7 @@ from models_db import Tenant
 from api.auth import get_current_tenant
 from metering import get_usage_summary, FREE_LIMITS
 
+log = logging.getLogger("infohub.usage")
 router = APIRouter()
 
 

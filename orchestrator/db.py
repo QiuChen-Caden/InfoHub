@@ -8,23 +8,32 @@ from uuid import UUID
 
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 from sqlalchemy import select, update, text
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from models import NewsItem
 from models_db import Base, News, RunHistory, UsageRecord
 
 log = logging.getLogger("infohub.db")
 
-DATABASE_URL = os.environ.get(
-    "DATABASE_URL",
-    "postgresql+asyncpg://infohub:infohub_secret@localhost:5432/infohub",
-)
+DATABASE_URL = os.environ.get("DATABASE_URL", "")
 
-engine = create_async_engine(DATABASE_URL, pool_size=20, max_overflow=10)
-SessionLocal = async_sessionmaker(engine, expire_on_commit=False)
+if DATABASE_URL:
+    engine = create_async_engine(
+        DATABASE_URL, pool_size=20, max_overflow=10,
+        pool_pre_ping=True, pool_recycle=300,
+        connect_args={"command_timeout": 60},
+    )
+    SessionLocal = async_sessionmaker(engine, expire_on_commit=False)
+else:
+    engine = None
+    SessionLocal = None
+    log.warning("DATABASE_URL 未设置，数据库功能不可用")
 
 
 async def init_db():
     """创建所有表（开发用，生产用 Alembic）"""
+    if not engine:
+        raise RuntimeError("DATABASE_URL 未设置，无法初始化数据库")
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     log.info("数据库表初始化完成")
@@ -32,7 +41,11 @@ async def init_db():
 
 async def get_session() -> AsyncSession:
     async with SessionLocal() as session:
-        yield session
+        try:
+            yield session
+        except Exception:
+            await session.rollback()
+            raise
 
 
 class Database:
@@ -56,16 +69,12 @@ class Database:
         return [it for it in items if it.id not in existing]
 
     async def save_items(self, items: List[NewsItem]):
-        for item in items:
-            existing = await self.session.execute(
-                select(News).where(
-                    News.id == item.id,
-                    News.tenant_id == self.tenant_id,
-                )
-            )
-            if existing.scalar_one_or_none():
-                continue
-            self.session.add(News(
+        """批量 upsert 新闻条目（ON CONFLICT DO NOTHING）"""
+        if not items:
+            return
+        log.info(f"保存 {len(items)} 条新闻到数据库")
+        values = [
+            dict(
                 id=item.id,
                 tenant_id=self.tenant_id,
                 title=item.title,
@@ -77,10 +86,19 @@ class Database:
                 score=item.score,
                 tags=",".join(item.tags) if item.tags else "",
                 summary=item.summary,
-            ))
+            )
+            for item in items
+        ]
+        stmt = pg_insert(News).values(values).on_conflict_do_nothing(
+            index_elements=["id", "tenant_id"]
+        )
+        await self.session.execute(stmt)
         await self.session.flush()
 
     async def mark_matched(self, items: List[NewsItem]):
+        if not items:
+            return
+        log.info(f"标记 {len(items)} 条为已匹配")
         for item in items:
             await self.session.execute(
                 update(News)
@@ -88,7 +106,7 @@ class Database:
                 .values(
                     score=item.score,
                     tags=",".join(item.tags) if item.tags else "",
-                    summary=item.summary,
+                    summary=item.summary or "",
                 )
             )
         await self.session.flush()
@@ -110,9 +128,11 @@ class Database:
         )
         self.session.add(run)
         await self.session.flush()
+        log.info(f"创建运行记录 #{run.id} tenant={self.tenant_id}")
         return run.id
 
     async def finish_run(self, run_id: int, **stats):
+        log.info(f"完成运行记录 #{run_id}")
         await self.session.execute(
             update(RunHistory)
             .where(RunHistory.id == run_id, RunHistory.tenant_id == self.tenant_id)

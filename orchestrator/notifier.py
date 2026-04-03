@@ -53,6 +53,9 @@ class Notifier:
             ("slack_webhook_url", self._send_slack),
         ]
 
+        active = [key for key, _ in channels if self.config.get(key)]
+        log.info(f"通知发送: {len(items)} 条 → {len(active)} 个渠道")
+
         for key, sender in channels:
             if not self.config.get(key):
                 continue
@@ -106,8 +109,11 @@ class Notifier:
         return "\n".join(lines)
 
     def _send_telegram(self, message: str) -> bool:
-        token = self.config["telegram_bot_token"]
-        chat_id = self.config["telegram_chat_id"]
+        token = self.config.get("telegram_bot_token", "")
+        chat_id = self.config.get("telegram_chat_id", "")
+        if not token or not chat_id:
+            log.warning("Telegram 配置不完整: 需要 telegram_bot_token 和 telegram_chat_id")
+            return False
         all_ok = True
         for chunk in self._split(message, 4000):
             ok = _post_with_retry(
@@ -162,6 +168,7 @@ class Notifier:
                 server.login(self.config["email_from"],
                              self.config["email_password"])
                 server.send_message(msg)
+            log.info(f"邮件发送成功: {self.config['email_to']}")
             return True
         except Exception as e:
             log.error(f"邮件发送失败: {e}")
@@ -195,6 +202,8 @@ class Notifier:
 
     @staticmethod
     def _detect_smtp(email: str) -> str:
+        if "@" not in email:
+            return "smtp.gmail.com"
         domain = email.split("@")[1]
         return {
             "gmail.com": "smtp.gmail.com",

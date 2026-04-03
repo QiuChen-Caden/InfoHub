@@ -1,7 +1,9 @@
 """配置管理 API"""
 
-from fastapi import APIRouter, Depends
-from pydantic import BaseModel
+import logging
+
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, field_validator
 from typing import List, Optional
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -10,6 +12,7 @@ from db import get_session
 from models_db import Tenant, TenantConfig
 from api.auth import get_current_tenant
 
+log = logging.getLogger("infohub.config.api")
 router = APIRouter()
 
 
@@ -33,6 +36,15 @@ class ConfigUpdate(BaseModel):
     ai_config: Optional[dict] = None
     cron_schedule: Optional[str] = None
     obsidian_export: Optional[bool] = None
+
+    @field_validator("cron_schedule")
+    @classmethod
+    def validate_cron(cls, v):
+        if v is not None:
+            from croniter import croniter
+            if not croniter.is_valid(v):
+                raise ValueError(f"无效的 cron 表达式: {v}")
+        return v
 
 
 class InterestsUpdate(BaseModel):
@@ -88,6 +100,7 @@ async def update_config(
     for field, value in body.model_dump(exclude_none=True).items():
         setattr(tc, field, value)
     await session.commit()
+    log.info(f"配置更新: tenant={tenant.id} fields={list(body.model_dump(exclude_none=True).keys())}")
     return {"ok": True}
 
 
@@ -100,6 +113,7 @@ async def update_interests(
     tc = await _get_or_create_config(session, tenant)
     tc.interests = body.interests
     await session.commit()
+    log.info(f"兴趣标签更新: tenant={tenant.id} count={len(body.interests)}")
     return {"ok": True}
 
 
@@ -112,6 +126,7 @@ async def update_notification(
     tc = await _get_or_create_config(session, tenant)
     tc.notification = body.notification
     await session.commit()
+    log.info(f"通知配置更新: tenant={tenant.id}")
     return {"ok": True}
 
 
@@ -127,4 +142,5 @@ async def update_feeds(
     if body.external_feeds is not None:
         tc.external_feeds = body.external_feeds
     await session.commit()
+    log.info(f"订阅源更新: tenant={tenant.id}")
     return {"ok": True}

@@ -1,5 +1,5 @@
 # ---- Stage 1: Build frontend ----
-FROM oven/bun:latest AS frontend-build
+FROM oven/bun:1.1.38 AS frontend-build
 WORKDIR /build
 COPY frontend/package.json frontend/bun.lock* frontend/package-lock.json* ./
 RUN bun install
@@ -8,7 +8,7 @@ RUN bun run build
 
 # ---- Stage 2: Python API + static frontend ----
 FROM python:3.12-slim-bookworm
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+COPY --from=ghcr.io/astral-sh/uv:0.5.11 /uv /usr/local/bin/uv
 
 WORKDIR /app
 COPY orchestrator/requirements.txt .

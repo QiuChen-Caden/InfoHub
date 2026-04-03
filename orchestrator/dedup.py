@@ -1,10 +1,13 @@
 """跨源去重 — URL 归一化 + 标题相似度 + 来源优先级"""
 
 import re
+import logging
 from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
 from typing import List
 
 from models import NewsItem
+
+log = logging.getLogger("infohub.dedup")
 
 SOURCE_PRIORITY = {"hotlist": 1, "rss": 0}
 
@@ -19,7 +22,10 @@ _TRACKING_PARAMS = {
 def deduplicate(items: List[NewsItem]) -> List[NewsItem]:
     seen_urls: dict = {}
     seen_titles: dict = {}
-    result = []
+    result_list: list = []
+    result_set: set = set()  # 用于 O(1) 删除检查
+    url_dups = 0
+    title_dups = 0
 
     for item in items:
         norm_url = _normalize_url(item.url) if item.url else ""
@@ -29,10 +35,14 @@ def deduplicate(items: List[NewsItem]) -> List[NewsItem]:
         if norm_url and norm_url in seen_urls:
             existing = seen_urls[norm_url]
             if _priority(item) > _priority(existing):
-                result.remove(existing)
-                result.append(item)
+                if id(existing) in result_set:
+                    result_list = [r for r in result_list if r is not existing]
+                    result_set.discard(id(existing))
+                result_list.append(item)
+                result_set.add(id(item))
                 seen_urls[norm_url] = item
                 _replace_title(seen_titles, existing, item)
+            url_dups += 1
             continue
 
         # 2. 标题相似度去重
@@ -40,8 +50,11 @@ def deduplicate(items: List[NewsItem]) -> List[NewsItem]:
         if matched_key:
             existing = seen_titles[matched_key]
             if _priority(item) > _priority(existing):
-                result.remove(existing)
-                result.append(item)
+                if id(existing) in result_set:
+                    result_list = [r for r in result_list if r is not existing]
+                    result_set.discard(id(existing))
+                result_list.append(item)
+                result_set.add(id(item))
                 del seen_titles[matched_key]
                 seen_titles[norm_title] = item
                 if existing.url:
@@ -49,15 +62,20 @@ def deduplicate(items: List[NewsItem]) -> List[NewsItem]:
                     seen_urls.pop(old_url, None)
                 if norm_url:
                     seen_urls[norm_url] = item
+            title_dups += 1
             continue
 
         # 新条目
         if norm_url:
             seen_urls[norm_url] = item
         seen_titles[norm_title] = item
-        result.append(item)
+        result_list.append(item)
+        result_set.add(id(item))
 
-    return result
+    removed = len(items) - len(result_list)
+    if removed > 0:
+        log.info(f"去重: {len(items)} → {len(result_list)} (URL重复 {url_dups}, 标题重复 {title_dups})")
+    return result_list
 
 
 def _priority(item: NewsItem) -> int:

@@ -9,39 +9,55 @@ export default function Dashboard() {
   const [runs, setRuns] = useState<RunItem[]>([]);
   const [news, setNews] = useState<NewsItem[]>([]);
   const [error, setError] = useState('');
-  const [running, setRunning] = useState(false);
   const [triggerMsg, setTriggerMsg] = useState('');
+  const [triggering, setTriggering] = useState(false);
+  const [polling, setPolling] = useState(false);
 
   const loadData = useCallback(() => {
-    Promise.all([api.stats(), api.runs(5), api.news({ limit: 10 })])
-      .then(([s, r, n]) => { setStats(s); setRuns(r); setNews(n); })
-      .catch((e) => setError(e.message));
-  }, []);
-
-  useEffect(() => {
-    loadData();
-    api.triggerStatus().then((s) => setRunning(s.running)).catch(() => {});
-  }, [loadData]);
-
-  useEffect(() => {
-    if (!running) return;
-    const id = setInterval(() => {
-      api.triggerStatus().then((s) => {
-        if (!s.running) {
-          setRunning(false);
-          setTriggerMsg(s.last_error ? `ERR: ${s.last_error}` : 'RUN COMPLETE');
-          loadData();
+    Promise.allSettled([api.newsStats(), api.runs(5), api.news({ limit: 10 })])
+      .then(([sRes, rRes, nRes]) => {
+        if (sRes.status === 'fulfilled') setStats(sRes.value);
+        if (rRes.status === 'fulfilled') setRuns(rRes.value);
+        if (nRes.status === 'fulfilled') setNews(nRes.value);
+        const failures = [sRes, rRes, nRes].filter(r => r.status === 'rejected');
+        if (failures.length === 3) {
+          setError((failures[0] as PromiseRejectedResult).reason?.message || 'Load failed');
         }
       });
-    }, 3000);
+  }, []);
+
+  useEffect(() => { loadData(); }, [loadData]);
+
+  // 触发后轮询，直到最新 run 完成
+  useEffect(() => {
+    if (!polling) return;
+    const id = setInterval(() => {
+      api.runs(5).then(latestRuns => {
+        setRuns(latestRuns);
+        const newest = latestRuns[0];
+        if (newest?.finished_at) {
+          setPolling(false);
+          setTriggerMsg(newest.errors ? 'RUN FAILED' : 'RUN COMPLETED');
+          // 刷新全部数据
+          loadData();
+        }
+      }).catch(() => {});
+    }, 5000);
     return () => clearInterval(id);
-  }, [running, loadData]);
+  }, [polling, loadData]);
 
   const handleTrigger = () => {
     setTriggerMsg('');
+    setTriggering(true);
     api.triggerRun()
-      .then(() => { setRunning(true); setTriggerMsg('RUN STARTED...'); })
-      .catch((e) => setTriggerMsg(e.message));
+      .then(() => {
+        setTriggerMsg('RUNNING...');
+        setPolling(true);
+        // 1 秒后刷新，此时 DB 已有 RunHistory 行
+        setTimeout(loadData, 1000);
+      })
+      .catch((e) => setTriggerMsg('ERR: ' + e.message))
+      .finally(() => setTriggering(false));
   };
 
   if (error) return <p className="text-negative">ERR: {error}</p>;
@@ -61,10 +77,10 @@ export default function Dashboard() {
           <div className="bb-panel-body flex-1 flex flex-col items-center justify-center gap-1">
             <button
               onClick={handleTrigger}
-              disabled={running}
+              disabled={triggering}
               className="px-3 py-1 text-xs font-bold bg-accent text-black hover:bg-accent/80 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {running ? '[ RUNNING... ]' : '[ TRIGGER RUN ]'}
+              {triggering ? '[ SUBMITTING... ]' : '[ TRIGGER RUN ]'}
             </button>
             {triggerMsg && (
               <span className={`text-xs ${triggerMsg.startsWith('ERR') ? 'text-negative' : 'text-positive'}`}>
@@ -95,7 +111,7 @@ export default function Dashboard() {
                 {runs.map((r, i) => (
                   <tr key={r.id} className={i % 2 === 0 ? 'bg-card' : 'bg-bg'}>
                     <td className="px-2 py-1">{r.id}</td>
-                    <td className="px-2 py-1 text-accent/70">{r.started_at.replace('T', ' ').slice(0, 16)}</td>
+                    <td className="px-2 py-1 text-accent/70">{r.started_at?.replace('T', ' ').slice(0, 16)}</td>
                     <td className="px-2 py-1">{r.matched_count}</td>
                     <td className="px-2 py-1">{r.pushed_count}</td>
                     <td className="px-2 py-1">

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { api } from '../api';
 import type { RunItem } from '../types';
 
@@ -6,9 +6,19 @@ export default function Runs() {
   const [runs, setRuns] = useState<RunItem[]>([]);
   const [error, setError] = useState('');
 
-  useEffect(() => {
+  const loadRuns = useCallback(() => {
     api.runs(100).then(setRuns).catch((e) => setError(e.message));
   }, []);
+
+  useEffect(() => { loadRuns(); }, [loadRuns]);
+
+  // 如果有正在运行的任务（无 finished_at），每 5 秒轮询
+  const hasRunning = runs.some(r => !r.finished_at);
+  useEffect(() => {
+    if (!hasRunning) return;
+    const id = setInterval(loadRuns, 5000);
+    return () => clearInterval(id);
+  }, [hasRunning, loadRuns]);
 
   if (error) return <p className="text-negative">ERR: {error}</p>;
 

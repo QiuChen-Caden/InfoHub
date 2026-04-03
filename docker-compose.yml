@@ -1,11 +1,18 @@
+networks:
+  frontend:
+  backend:
+  data:
+
 services:
   # ---- 数据库 ----
   postgres:
     image: postgres:16-alpine
     restart: unless-stopped
+    networks:
+      - data
     environment:
       POSTGRES_USER: infohub
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-infohub_secret}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
       POSTGRES_DB: infohub
     volumes:
       - postgres_data:/var/lib/postgresql/data
@@ -13,17 +20,25 @@ services:
       test: ["CMD", "pg_isready", "-U", "infohub"]
       interval: 10s
       start_period: 30s
+    stop_grace_period: 30s
     deploy:
       resources:
         limits:
           memory: 256M
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   postgres-miniflux:
     image: postgres:16-alpine
     restart: unless-stopped
+    networks:
+      - data
     environment:
       POSTGRES_USER: miniflux
-      POSTGRES_PASSWORD: ${MINIFLUX_DB_PASSWORD:-miniflux_secret}
+      POSTGRES_PASSWORD: ${MINIFLUX_DB_PASSWORD:?MINIFLUX_DB_PASSWORD must be set}
       POSTGRES_DB: miniflux
     volumes:
       - postgres_miniflux_data:/var/lib/postgresql/data
@@ -31,54 +46,83 @@ services:
       test: ["CMD", "pg_isready", "-U", "miniflux"]
       interval: 10s
       start_period: 30s
+    stop_grace_period: 30s
     deploy:
       resources:
         limits:
           memory: 256M
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   redis:
     image: redis:7-alpine
     restart: unless-stopped
+    networks:
+      - data
+    command: redis-server --requirepass ${REDIS_PASSWORD:?REDIS_PASSWORD must be set} --appendonly yes
     volumes:
       - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 10s
+      start_period: 10s
+    stop_grace_period: 15s
     deploy:
       resources:
         limits:
           memory: 128M
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   # ---- 数据源层 ----
   rsshub:
-    image: diygod/rsshub:latest
+    image: diygod/rsshub:2025-01-13
     restart: unless-stopped
-    ports:
-      - "3200:1200"
+    networks:
+      - backend
+      - data
     environment:
       NODE_ENV: production
       CACHE_TYPE: redis
       CACHE_EXPIRE: 1800
       CACHE_CONTENT_EXPIRE: 7200
-      REDIS_URL: "redis://redis:6379/"
+      REDIS_URL: "redis://:${REDIS_PASSWORD:-redis_secret}@redis:6379/"
       REQUEST_RETRY: 3
       REQUEST_TIMEOUT: 10000
     depends_on:
-      - redis
+      redis:
+        condition: service_healthy
     deploy:
       resources:
         limits:
           memory: 1024M
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   # ---- 聚合层 ----
   miniflux:
-    image: miniflux/miniflux:latest
+    image: miniflux/miniflux:2.2.5
     restart: unless-stopped
+    networks:
+      - backend
+      - data
     ports:
-      - "8880:8080"
+      - "127.0.0.1:8480:8080"
     environment:
-      DATABASE_URL: "postgres://miniflux:${MINIFLUX_DB_PASSWORD:-miniflux_secret}@postgres-miniflux/miniflux?sslmode=disable"
+      DATABASE_URL: "postgres://miniflux:${MINIFLUX_DB_PASSWORD:?}@postgres-miniflux/miniflux?sslmode=disable"
       RUN_MIGRATIONS: 1
       CREATE_ADMIN: 1
-      ADMIN_USERNAME: ${MINIFLUX_ADMIN:-admin}
-      ADMIN_PASSWORD: ${MINIFLUX_PASSWORD:-changeme123}
+      ADMIN_USERNAME: ${MINIFLUX_ADMIN:?MINIFLUX_ADMIN must be set}
+      ADMIN_PASSWORD: ${MINIFLUX_PASSWORD:?MINIFLUX_PASSWORD must be set}
       POLLING_FREQUENCY: 30
       BATCH_SIZE: 50
       WORKER_POOL_SIZE: 8
@@ -97,6 +141,11 @@ services:
       resources:
         limits:
           memory: 128M
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   # ---- SaaS API 层（含前端）----
   api:
@@ -104,17 +153,21 @@ services:
       context: .
       dockerfile: Dockerfile.api
     restart: unless-stopped
+    networks:
+      - frontend
+      - backend
+      - data
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8500:8000"
     environment:
       APP_MODE: api
-      DATABASE_URL: "postgresql+asyncpg://infohub:${POSTGRES_PASSWORD:-infohub_secret}@postgres:5432/infohub"
-      REDIS_URL: "redis://redis:6379/0"
-      JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
-      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+      DATABASE_URL: "postgresql+asyncpg://infohub:${POSTGRES_PASSWORD:?}@postgres:5432/infohub"
+      REDIS_URL: "redis://:${REDIS_PASSWORD:?}@redis:6379/0"
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:?ENCRYPTION_KEY must be set}
       MINIFLUX_URL: "http://miniflux:8080"
-      MINIFLUX_ADMIN: ${MINIFLUX_ADMIN:-admin}
-      MINIFLUX_PASSWORD: ${MINIFLUX_PASSWORD:-changeme123}
+      MINIFLUX_ADMIN: ${MINIFLUX_ADMIN:?}
+      MINIFLUX_PASSWORD: ${MINIFLUX_PASSWORD:?}
       RSSHUB_URL: "http://rsshub:1200"
       OUTPUT_DIR: /app/output
       BOOTSTRAP_EMAIL: ${BOOTSTRAP_EMAIL:-}
@@ -126,9 +179,19 @@ services:
       postgres:
         condition: service_healthy
       redis:
-        condition: service_started
+        condition: service_healthy
       miniflux:
         condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+    stop_grace_period: 15s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   # ---- Celery Worker ----
   worker:
@@ -136,23 +199,44 @@ services:
       context: ./orchestrator
       dockerfile: Dockerfile
     restart: unless-stopped
+    networks:
+      - backend
+      - data
     environment:
       APP_MODE: worker
-      DATABASE_URL: "postgresql+asyncpg://infohub:${POSTGRES_PASSWORD:-infohub_secret}@postgres:5432/infohub"
-      REDIS_URL: "redis://redis:6379/0"
-      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+      DATABASE_URL: "postgresql+asyncpg://infohub:${POSTGRES_PASSWORD:?}@postgres:5432/infohub"
+      REDIS_URL: "redis://:${REDIS_PASSWORD:?}@redis:6379/0"
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:?}
       MINIFLUX_URL: "http://miniflux:8080"
-      MINIFLUX_ADMIN: ${MINIFLUX_ADMIN:-admin}
-      MINIFLUX_PASSWORD: ${MINIFLUX_PASSWORD:-changeme123}
+      MINIFLUX_ADMIN: ${MINIFLUX_ADMIN:?}
+      MINIFLUX_PASSWORD: ${MINIFLUX_PASSWORD:?}
       RSSHUB_URL: "http://rsshub:1200"
       OUTPUT_DIR: /app/output
+      SINGLE_TENANT: ${SINGLE_TENANT:-}
     volumes:
       - ./output:/app/output
     depends_on:
       postgres:
         condition: service_healthy
       redis:
-        condition: service_started
+        condition: service_healthy
+      miniflux:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A tasks inspect ping -d celery@$$HOSTNAME 2>/dev/null || exit 1"]
+      interval: 30s
+      start_period: 30s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 1024M
+    stop_grace_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   # ---- Celery Beat 调度器 ----
   beat:
@@ -160,15 +244,33 @@ services:
       context: ./orchestrator
       dockerfile: Dockerfile
     restart: unless-stopped
+    networks:
+      - backend
+      - data
     environment:
       APP_MODE: beat
-      DATABASE_URL: "postgresql+asyncpg://infohub:${POSTGRES_PASSWORD:-infohub_secret}@postgres:5432/infohub"
-      REDIS_URL: "redis://redis:6379/0"
+      DATABASE_URL: "postgresql+asyncpg://infohub:${POSTGRES_PASSWORD:?}@postgres:5432/infohub"
+      REDIS_URL: "redis://:${REDIS_PASSWORD:?}@redis:6379/0"
     depends_on:
       postgres:
         condition: service_healthy
       redis:
-        condition: service_started
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "test -f /tmp/celerybeat.pid && kill -0 $(cat /tmp/celerybeat.pid) || exit 1"]
+      interval: 30s
+      start_period: 15s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+    stop_grace_period: 10s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 volumes:
   postgres_data:
