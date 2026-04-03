@@ -2,12 +2,14 @@
 
 import logging
 from datetime import datetime, timezone
+from typing import Optional
 from uuid import UUID
 
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models_db import UsageRecord, Tenant
+from tz import get_tz
 
 log = logging.getLogger("infohub.metering")
 
@@ -47,12 +49,13 @@ def _month_range(now: datetime):
 
 
 async def record_usage(session: AsyncSession, tenant_id: UUID,
-                       action: str, count: int = 1, tokens: int = 0):
+                       action: str, count: int = 1, tokens: int = 0,
+                       tz_name: str = None):
     """记录用量（批量 INSERT），只对超出免费额度的部分计费"""
     tenant = await session.get(Tenant, tenant_id)
     is_paid = tenant and tenant.plan in ("pro", "enterprise")
 
-    used = await get_monthly_usage(session, tenant_id, action)
+    used = await get_monthly_usage(session, tenant_id, action, tz_name=tz_name)
     limit = FREE_LIMITS.get(action, 0)
     unit_cost = UNIT_COST.get(action, 0)
 
@@ -80,9 +83,9 @@ async def record_usage(session: AsyncSession, tenant_id: UUID,
 
 
 async def get_monthly_usage(session: AsyncSession, tenant_id: UUID,
-                            action: str) -> int:
+                            action: str, tz_name: str = None) -> int:
     """获取当月某 action 的使用次数（使用范围过滤利用索引）"""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(get_tz(tz_name))
     month_start, next_month_start = _month_range(now)
     result = await session.execute(
         select(func.count(UsageRecord.id)).where(
@@ -96,7 +99,8 @@ async def get_monthly_usage(session: AsyncSession, tenant_id: UUID,
 
 
 async def check_quota(session: AsyncSession, tenant_id: UUID,
-                      action: str, requested: int = 1) -> bool:
+                      action: str, requested: int = 1,
+                      tz_name: str = None) -> bool:
     """检查是否有足够额度"""
     tenant = await session.get(Tenant, tenant_id)
     if tenant and tenant.plan in ("pro", "enterprise"):
@@ -106,7 +110,7 @@ async def check_quota(session: AsyncSession, tenant_id: UUID,
     if limit == 0:
         return True
 
-    used = await get_monthly_usage(session, tenant_id, action)
+    used = await get_monthly_usage(session, tenant_id, action, tz_name=tz_name)
     remaining = limit - used
     if remaining >= requested:
         return True
@@ -114,9 +118,10 @@ async def check_quota(session: AsyncSession, tenant_id: UUID,
     return False
 
 
-async def get_usage_summary(session: AsyncSession, tenant_id: UUID) -> dict:
+async def get_usage_summary(session: AsyncSession, tenant_id: UUID,
+                            tz_name: str = None) -> dict:
     """获取当月用量汇总"""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(get_tz(tz_name))
     month_start, next_month_start = _month_range(now)
     result = await session.execute(
         select(

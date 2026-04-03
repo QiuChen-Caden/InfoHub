@@ -1,3 +1,4 @@
+timezone: Asia/Shanghai
 ai:
   api_base: ''
   api_key: sk-e467146b9f954be2aad5f2d955451bac

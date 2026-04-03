@@ -13,17 +13,26 @@ const links = [
   { to: '/logs', label: 'LOGS', key: 'F6', num: 6 },
 ];
 
-function UtcClock() {
+function Clock() {
   const [time, setTime] = useState('');
+  const [tz, setTz] = useState('Asia/Shanghai');
+  useEffect(() => {
+    api.config().then(cfg => setTz(cfg.timezone || 'Asia/Shanghai')).catch(() => {});
+  }, []);
   useEffect(() => {
     const tick = () => {
       const now = new Date();
-      setTime(now.toISOString().slice(0, 19).replace('T', ' ') + ' UTC');
+      try {
+        const formatted = now.toLocaleString('sv-SE', { timeZone: tz, hour12: false });
+        setTime(formatted.replace('T', ' ') + ' ' + tz.split('/').pop());
+      } catch {
+        setTime(now.toISOString().slice(0, 19).replace('T', ' ') + ' UTC');
+      }
     };
     tick();
     const id = setInterval(tick, 1000);
     return () => clearInterval(id);
-  }, []);
+  }, [tz]);
   return <span className="text-positive text-xs font-bold">{time}</span>;
 }
 
@@ -94,7 +103,7 @@ export default function Layout() {
         <div className="ml-auto flex items-center gap-3">
           {user && <span className="text-accent/60 text-xs">{user.email}</span>}
           <button onClick={logout} className="text-negative text-xs hover:text-red-400 cursor-pointer">LOGOUT</button>
-          <UtcClock />
+          <Clock />
         </div>
       </header>
 

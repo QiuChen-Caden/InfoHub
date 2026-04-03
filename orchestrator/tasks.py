@@ -5,7 +5,7 @@ import sys
 import logging
 import asyncio
 from uuid import UUID
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 
 # 确保 /app 在 sys.path 中（prefork 子进程可能丢失 cwd）
 _app_dir = os.path.dirname(os.path.abspath(__file__))
@@ -22,6 +22,8 @@ _ensure_path()
 from celery import Celery
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
 
+from tz import get_tz
+
 log = logging.getLogger("infohub.tasks")
 
 REDIS_URL = os.environ.get("REDIS_URL", "")
@@ -36,7 +38,7 @@ celery_app.conf.update(
     task_serializer="json",
     result_serializer="json",
     accept_content=["json"],
-    timezone="Asia/Shanghai",
+    timezone=os.environ.get("APP_TIMEZONE", "Asia/Shanghai"),
     task_acks_late=True,
     task_reject_on_worker_lost=True,
     worker_prefetch_multiplier=1,
@@ -126,12 +128,11 @@ async def _schedule_all():
         pool_pre_ping=True, pool_recycle=300,
     )
     Session = async_sessionmaker(engine, expire_on_commit=False)
-    now = datetime.now(timezone(timedelta(hours=8)))  # Asia/Shanghai
 
     try:
         async with Session() as session:
             result = await session.execute(
-                select(Tenant.id, TenantConfig.cron_schedule)
+                select(Tenant.id, TenantConfig.cron_schedule, TenantConfig.timezone)
                 .join(TenantConfig, Tenant.id == TenantConfig.tenant_id, isouter=True)
                 .where(Tenant.is_active == True)
             )
@@ -143,8 +144,9 @@ async def _schedule_all():
         log.warning("调度检查: 未找到任何活跃租户")
 
     dispatched = 0
-    for tenant_id, cron_schedule in tenants:
+    for tenant_id, cron_schedule, tz_name in tenants:
         schedule = cron_schedule or "*/30 * * * *"
+        now = datetime.now(get_tz(tz_name))
         if _cron_matches_now(schedule, now):
             run_pipeline.delay(str(tenant_id))
             dispatched += 1

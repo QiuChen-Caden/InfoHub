@@ -18,6 +18,15 @@ const CRON_PRESETS = [
   { label: '工作日 9 点', value: '0 9 * * 1-5' },
 ];
 
+const TIMEZONE_PRESETS = [
+  { label: '北京 (UTC+8)', value: 'Asia/Shanghai' },
+  { label: '东京 (UTC+9)', value: 'Asia/Tokyo' },
+  { label: '新加坡 (UTC+8)', value: 'Asia/Singapore' },
+  { label: '伦敦 (UTC+0)', value: 'Europe/London' },
+  { label: '纽约 (UTC-5)', value: 'America/New_York' },
+  { label: '洛杉矶 (UTC-8)', value: 'America/Los_Angeles' },
+];
+
 const ALLOWED_SECRET_KEYS = [
   'ai_api_key', 'ai_api_base',
   'miniflux_api_key',
@@ -40,6 +49,7 @@ function toForm(cfg: ConfigData): ConfigUpdateRequest {
     notification: { ...cfg.notification },
     ai_config: { ...cfg.ai_config },
     cron_schedule: cfg.cron_schedule,
+    timezone: cfg.timezone,
     obsidian_export: cfg.obsidian_export,
   };
 }
@@ -49,7 +59,7 @@ function emptyForm(): ConfigUpdateRequest {
     platforms: [], interests: [],
     rsshub_feeds: [], external_feeds: [],
     notification: {}, ai_config: {},
-    cron_schedule: '', obsidian_export: false,
+    cron_schedule: '', timezone: 'Asia/Shanghai', obsidian_export: false,
   };
 }
 
@@ -309,6 +319,25 @@ export default function Config() {
       <div className="bb-panel">
         <div className="bb-panel-header">SYSTEM</div>
         <div className="bb-panel-body space-y-2 text-xs">
+          <div>
+            <span className="text-accent/70 text-xs">TIMEZONE:</span>
+            <div className="flex flex-wrap gap-1 mt-1">
+              {TIMEZONE_PRESETS.map(p => (
+                <button key={p.value} onClick={() => setForm(f => ({ ...f, timezone: p.value }))}
+                  className={`px-2 py-0.5 border text-xs cursor-pointer ${
+                    form.timezone === p.value
+                      ? 'bg-accent text-black border-accent font-bold'
+                      : 'border-border text-accent/40 hover:border-accent/60'
+                  }`}>
+                  {p.label}
+                </button>
+              ))}
+            </div>
+            <div className="flex items-center gap-2 mt-1">
+              <span className="text-accent/50 text-xs shrink-0">自定义:</span>
+              <input className={inp} value={form.timezone ?? ''} onChange={e => setForm(f => ({ ...f, timezone: e.target.value }))} placeholder="Asia/Shanghai" />
+            </div>
+          </div>
           <div>
             <span className="text-accent/70 text-xs">CRON_SCHEDULE:</span>
             <div className="flex flex-wrap gap-1 mt-1">

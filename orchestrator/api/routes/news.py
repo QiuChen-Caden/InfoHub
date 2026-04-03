@@ -2,7 +2,7 @@
 
 import logging
 import os
-from datetime import date, datetime, time, timezone
+from datetime import date, datetime, time
 from pathlib import Path
 from typing import Optional
 from fastapi import APIRouter, Depends, Query
@@ -12,8 +12,9 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from db import get_session
-from models_db import Tenant, News, RunHistory
+from models_db import Tenant, TenantConfig, News, RunHistory
 from api.auth import get_current_tenant
+from tz import get_tz
 
 log = logging.getLogger("infohub.news")
 router = APIRouter()
@@ -61,14 +62,21 @@ async def list_news(
         q = q.where(News.score >= min_score)
     if max_score is not None:
         q = q.where(News.score <= max_score)
-    if start_date:
-        q = q.where(
-            News.created_at >= datetime.combine(start_date, time.min, tzinfo=timezone.utc)
+    if start_date or end_date:
+        # 获取租户时区用于日期过滤
+        tc_result = await session.execute(
+            select(TenantConfig.timezone).where(TenantConfig.tenant_id == tid)
         )
-    if end_date:
-        q = q.where(
-            News.created_at <= datetime.combine(end_date, time.max, tzinfo=timezone.utc)
-        )
+        tz_name = tc_result.scalar_one_or_none()
+        tz = get_tz(tz_name)
+        if start_date:
+            q = q.where(
+                News.created_at >= datetime.combine(start_date, time.min, tzinfo=tz)
+            )
+        if end_date:
+            q = q.where(
+                News.created_at <= datetime.combine(end_date, time.max, tzinfo=tz)
+            )
     q = q.order_by(News.created_at.desc()).limit(limit).offset(offset)
     result = await session.execute(q)
     rows = list(result.scalars().all())

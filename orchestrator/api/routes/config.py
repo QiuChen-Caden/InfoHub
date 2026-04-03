@@ -24,6 +24,7 @@ class ConfigResponse(BaseModel):
     notification: dict
     ai_config: dict
     cron_schedule: str
+    timezone: str
     obsidian_export: bool
 
 
@@ -35,6 +36,7 @@ class ConfigUpdate(BaseModel):
     notification: Optional[dict] = None
     ai_config: Optional[dict] = None
     cron_schedule: Optional[str] = None
+    timezone: Optional[str] = None
     obsidian_export: Optional[bool] = None
 
     @field_validator("cron_schedule")
@@ -44,6 +46,17 @@ class ConfigUpdate(BaseModel):
             from croniter import croniter
             if not croniter.is_valid(v):
                 raise ValueError(f"无效的 cron 表达式: {v}")
+        return v
+
+    @field_validator("timezone")
+    @classmethod
+    def validate_timezone(cls, v):
+        if v is not None:
+            from zoneinfo import ZoneInfo
+            try:
+                ZoneInfo(v)
+            except (KeyError, ValueError):
+                raise ValueError(f"无效的时区: {v}")
         return v
 
 
@@ -86,6 +99,7 @@ async def get_config(
         notification=tc.notification or {},
         ai_config=tc.ai_config or {},
         cron_schedule=tc.cron_schedule or "*/30 * * * *",
+        timezone=tc.timezone or "Asia/Shanghai",
         obsidian_export=tc.obsidian_export or False,
     )
 

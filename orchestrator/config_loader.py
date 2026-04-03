@@ -68,6 +68,7 @@ async def load_tenant_config(session: AsyncSession, tenant_id: UUID) -> dict:
             notification[key] = secrets[key]
 
     config = {
+        "timezone": tc.timezone or "Asia/Shanghai",
         "platforms": tc.platforms or DEFAULT_PLATFORMS,
         "interests": tc.interests or [],
         "miniflux_url": os.environ.get("MINIFLUX_URL", "http://miniflux:8080"),
@@ -117,6 +118,7 @@ def _build_default_config(secrets: dict, tenant_id: UUID = None) -> dict:
         ai["api_key"] = secrets["ai_api_key"]
 
     return {
+        "timezone": "Asia/Shanghai",
         "platforms": DEFAULT_PLATFORMS,
         "interests": [],
         "miniflux_url": os.environ.get("MINIFLUX_URL", "http://miniflux:8080"),

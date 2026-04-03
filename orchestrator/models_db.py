@@ -41,6 +41,7 @@ class TenantConfig(Base):
     notification = Column(JSONB, default=dict)
     ai_config = Column(JSONB, default=dict)
     cron_schedule = Column(String(50), default="*/30 * * * *")
+    timezone = Column(String(50), default="Asia/Shanghai")
     obsidian_export = Column(Boolean, default=False)
 
     tenant = relationship("Tenant", back_populates="config")

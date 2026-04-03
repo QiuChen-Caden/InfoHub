@@ -4,10 +4,12 @@ import json
 import logging
 import os
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import datetime
 from uuid import UUID
 
 import redis
+
+from tz import get_tz
 
 log = logging.getLogger("infohub.logstream")
 
@@ -17,18 +19,19 @@ REDIS_URL = os.environ.get("REDIS_URL", "")
 class RedisLogHandler(logging.Handler):
     """将日志发布到 Redis channel 并存储到 list（供历史查询）"""
 
-    def __init__(self, redis_url: str, tenant_id: UUID, run_id: int):
+    def __init__(self, redis_url: str, tenant_id: UUID, run_id: int, tz_name: str = None):
         super().__init__()
         self.r = redis.Redis.from_url(redis_url)
         self.channel = f"logs:{tenant_id}"
         self.history_key = f"log_history:{tenant_id}"
         self.run_id = run_id
         self.tenant_id = str(tenant_id)
+        self.tz = get_tz(tz_name)
 
     def emit(self, record):
         try:
             entry = json.dumps({
-                "ts": datetime.now(timezone.utc).strftime("%H:%M:%S"),
+                "ts": datetime.now(self.tz).strftime("%H:%M:%S"),
                 "level": record.levelname,
                 "msg": record.getMessage(),
                 "run_id": self.run_id,
@@ -56,7 +59,7 @@ class RedisLogHandler(logging.Handler):
 
 
 @contextmanager
-def stream_logs_to_redis(tenant_id: UUID, run_id: int):
+def stream_logs_to_redis(tenant_id: UUID, run_id: int, tz_name: str = None):
     """Context manager: 在管道运行期间将日志推送到 Redis"""
     redis_url = REDIS_URL
     if not redis_url:
@@ -65,7 +68,7 @@ def stream_logs_to_redis(tenant_id: UUID, run_id: int):
         return
 
     try:
-        handler = RedisLogHandler(redis_url, tenant_id, run_id)
+        handler = RedisLogHandler(redis_url, tenant_id, run_id, tz_name=tz_name)
     except Exception as e:
         log.warning(f"Redis 日志处理器创建失败: {e}，跳过日志流")
         yield

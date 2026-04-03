@@ -74,6 +74,7 @@ export interface ConfigData {
   notification: Record<string, unknown>;
   ai_config: Record<string, unknown>;
   cron_schedule: string;
+  timezone: string;
   obsidian_export: boolean;
 }
 
@@ -85,6 +86,7 @@ export interface ConfigUpdateRequest {
   notification?: Record<string, unknown>;
   ai_config?: Record<string, unknown>;
   cron_schedule?: string;
+  timezone?: string;
   obsidian_export?: boolean;
 }
 

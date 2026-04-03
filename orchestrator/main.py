@@ -10,7 +10,7 @@ InfoHub Orchestrator 主流程 v3 — 多租户 SaaS
 
 import logging
 import time
-from datetime import datetime, timezone, timedelta
+from datetime import datetime
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -25,6 +25,7 @@ from dedup import deduplicate
 from db import Database
 from metering import record_usage, check_quota
 from log_stream import stream_logs_to_redis
+from tz import get_tz
 
 logging.basicConfig(
     level=logging.INFO,
@@ -33,8 +34,6 @@ logging.basicConfig(
 )
 log = logging.getLogger("infohub")
 
-TZ = timezone(timedelta(hours=8))
-
 
 async def run(session: AsyncSession, tenant_id: UUID, run_id: int = None):
     t_start = time.monotonic()
@@ -42,12 +41,13 @@ async def run(session: AsyncSession, tenant_id: UUID, run_id: int = None):
     db = Database(session, tenant_id)
     if run_id is None:
         run_id = await db.start_run()
-    now = datetime.now(TZ)
+    tz = get_tz(config.get("timezone"))
+    now = datetime.now(tz)
     errors = []
 
     log.info(f"[{tenant_id}] 开始运行 #{run_id} - {now.strftime('%Y-%m-%d %H:%M')}")
 
-    with stream_logs_to_redis(tenant_id, run_id):
+    with stream_logs_to_redis(tenant_id, run_id, tz_name=config.get("timezone")):
         try:
             # ---- 0. Miniflux 客户端 + 自动注册源 ----
             mx = MinifluxClient(config["miniflux_url"], config["miniflux_api_key"])
@@ -93,9 +93,9 @@ async def run(session: AsyncSession, tenant_id: UUID, run_id: int = None):
             # ---- 4. AI 筛选（带配额检查）----
             ai = AIProcessor(config.get("ai", {}))
             matched = []
-            if await check_quota(session, tenant_id, "ai_filter", requested=len(new_items)):
+            if await check_quota(session, tenant_id, "ai_filter", requested=len(new_items), tz_name=config.get("timezone")):
                 matched = ai.filter_by_interest(new_items, config.get("interests", []))
-                await record_usage(session, tenant_id, "ai_filter", count=len(new_items))
+                await record_usage(session, tenant_id, "ai_filter", count=len(new_items), tz_name=config.get("timezone"))
             else:
                 log.warning(f"[{tenant_id}] AI 筛选配额已用完，跳过")
             log.info(f"[{tenant_id}] AI 筛选: {len(matched)}/{len(new_items)} 条匹配")
@@ -104,22 +104,22 @@ async def run(session: AsyncSession, tenant_id: UUID, run_id: int = None):
             if matched and config.get("ai", {}).get("api_key"):
                 en_items = [it for it in matched
                             if it.source_type == "rss" and _is_english(it.title)]
-                if en_items and await check_quota(session, tenant_id, "ai_translate", requested=len(en_items)):
+                if en_items and await check_quota(session, tenant_id, "ai_translate", requested=len(en_items), tz_name=config.get("timezone")):
                     log.info(f"[{tenant_id}] 批量翻译 {len(en_items)} 条英文标题...")
                     en_titles = [it.title for it in en_items]
                     translated_titles = ai.translate_batch(en_titles)
                     for it, translated in zip(en_items, translated_titles):
                         if translated != it.title:
                             it.title = f"{translated} | {it.title}"
-                    await record_usage(session, tenant_id, "ai_translate", count=len(en_items))
+                    await record_usage(session, tenant_id, "ai_translate", count=len(en_items), tz_name=config.get("timezone"))
                     log.info(f"[{tenant_id}] 翻译完成")
 
             # ---- 6. AI 摘要 ----
             summary = ""
             if matched and config.get("ai", {}).get("summary_enabled", True):
-                if await check_quota(session, tenant_id, "ai_summary"):
+                if await check_quota(session, tenant_id, "ai_summary", tz_name=config.get("timezone")):
                     summary = ai.generate_summaries(matched)
-                    await record_usage(session, tenant_id, "ai_summary")
+                    await record_usage(session, tenant_id, "ai_summary", tz_name=config.get("timezone"))
                     log.info(f"[{tenant_id}] AI 摘要生成完成")
 
             # ---- 7. 存储 ----
@@ -137,7 +137,7 @@ async def run(session: AsyncSession, tenant_id: UUID, run_id: int = None):
                     await db.mark_pushed([it.id for it in matched])
                     pushed_count = len(matched)
                     for channel in notifier.get_active_channels():
-                        await record_usage(session, tenant_id, f"push_{channel}")
+                        await record_usage(session, tenant_id, f"push_{channel}", tz_name=config.get("timezone"))
                     log.info(f"[{tenant_id}] 推送成功: {success} 个渠道")
                 elif success > 0 and fail > 0:
                     errors.append(f"推送部分失败: {success} 成功, {fail} 失败")

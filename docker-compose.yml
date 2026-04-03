@@ -161,6 +161,8 @@ services:
       - "127.0.0.1:8500:8000"
     environment:
       APP_MODE: api
+      TZ: Asia/Shanghai
+      APP_TIMEZONE: Asia/Shanghai
       DATABASE_URL: "postgresql+asyncpg://infohub:${POSTGRES_PASSWORD:?}@postgres:5432/infohub"
       REDIS_URL: "redis://:${REDIS_PASSWORD:?}@redis:6379/0"
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set}
@@ -204,6 +206,8 @@ services:
       - data
     environment:
       APP_MODE: worker
+      TZ: Asia/Shanghai
+      APP_TIMEZONE: Asia/Shanghai
       DATABASE_URL: "postgresql+asyncpg://infohub:${POSTGRES_PASSWORD:?}@postgres:5432/infohub"
       REDIS_URL: "redis://:${REDIS_PASSWORD:?}@redis:6379/0"
       ENCRYPTION_KEY: ${ENCRYPTION_KEY:?}
@@ -249,6 +253,8 @@ services:
       - data
     environment:
       APP_MODE: beat
+      TZ: Asia/Shanghai
+      APP_TIMEZONE: Asia/Shanghai
       DATABASE_URL: "postgresql+asyncpg://infohub:${POSTGRES_PASSWORD:?}@postgres:5432/infohub"
       REDIS_URL: "redis://:${REDIS_PASSWORD:?}@redis:6379/0"
     depends_on:
