@@ -18,10 +18,6 @@ router = APIRouter()
 ALLOWED_KEYS = {
     "ai_api_key", "ai_api_base",
     "miniflux_api_key",
-    "telegram_bot_token", "telegram_chat_id",
-    "feishu_webhook_url", "dingtalk_webhook_url",
-    "email_from", "email_password", "email_to",
-    "slack_webhook_url",
 }
 
 

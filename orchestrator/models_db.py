@@ -28,6 +28,7 @@ class Tenant(Base):
 
     config = relationship("TenantConfig", back_populates="tenant", uselist=False, lazy="joined")
     secrets = relationship("TenantSecret", back_populates="tenant", lazy="selectin")
+    api_keys = relationship("ApiKey", back_populates="tenant", lazy="noload")
 
 
 class TenantConfig(Base):
@@ -105,3 +106,18 @@ class RunHistory(Base):
     matched_count = Column(Integer, default=0)
     pushed_count = Column(Integer, default=0)
     errors = Column(Text, default="")
+
+
+class ApiKey(Base):
+    __tablename__ = "api_keys"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id = Column(UUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False, index=True)
+    name = Column(String(50), nullable=False)
+    key_hash = Column(String(255), nullable=False)
+    prefix = Column(String(8), nullable=False)
+    expires_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    is_active = Column(Boolean, default=True)
+
+    tenant = relationship("Tenant", back_populates="api_keys")

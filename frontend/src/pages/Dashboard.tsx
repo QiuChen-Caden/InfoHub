@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { api } from '../api';
+import { formatTime } from '../tz';
 import type { Stats, RunItem, NewsItem } from '../types';
 import StatCard from '../components/StatCard';
 import NewsTable from '../components/NewsTable';
@@ -69,7 +70,7 @@ export default function Dashboard() {
       <div className="grid grid-cols-6 gap-2 shrink-0">
         <StatCard label="TOTAL NEWS" value={stats.total_news} />
         <StatCard label="TOTAL RUNS" value={stats.total_runs} />
-        <StatCard label="LATEST RUN" value={stats.latest_run?.replace('T', ' ').slice(0, 16) ?? '—'} />
+        <StatCard label="LATEST RUN" value={formatTime(stats.latest_run)} />
         <StatCard label="HOTLIST" value={stats.hotlist_total} />
         <StatCard label="RSS" value={stats.rss_total} />
         <div className="bb-panel flex flex-col">
@@ -111,7 +112,7 @@ export default function Dashboard() {
                 {runs.map((r, i) => (
                   <tr key={r.id} className={i % 2 === 0 ? 'bg-card' : 'bg-bg'}>
                     <td className="px-2 py-1">{r.id}</td>
-                    <td className="px-2 py-1 text-accent/70">{r.started_at?.replace('T', ' ').slice(0, 16)}</td>
+                    <td className="px-2 py-1 text-accent/70">{formatTime(r.started_at)}</td>
                     <td className="px-2 py-1">{r.matched_count}</td>
                     <td className="px-2 py-1">{r.pushed_count}</td>
                     <td className="px-2 py-1">

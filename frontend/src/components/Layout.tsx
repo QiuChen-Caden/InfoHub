@@ -2,6 +2,7 @@ import { NavLink, Outlet, useNavigate } from 'react-router';
 import { useEffect, useState } from 'react';
 import { api } from '../api';
 import { clearToken } from '../auth';
+import { setTimezone } from '../tz';
 import type { User } from '../types';
 
 const links = [
@@ -17,7 +18,11 @@ function Clock() {
   const [time, setTime] = useState('');
   const [tz, setTz] = useState('Asia/Shanghai');
   useEffect(() => {
-    api.config().then(cfg => setTz(cfg.timezone || 'Asia/Shanghai')).catch(() => {});
+    api.config().then(cfg => {
+      const tzName = cfg.timezone || 'Asia/Shanghai';
+      setTz(tzName);
+      setTimezone(tzName);
+    }).catch(() => {});
   }, []);
   useEffect(() => {
     const tick = () => {

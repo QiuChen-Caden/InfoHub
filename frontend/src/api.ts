@@ -2,6 +2,7 @@ import { getToken, clearToken } from './auth';
 import type {
   NewsItem, RunItem, Stats, ConfigData, ConfigUpdateRequest,
   LoginRequest, RegisterRequest, TokenResponse, User, UsageData,
+  ApiKeyItem, CreateApiKeyResponse,
 } from './types';
 
 const BASE = import.meta.env.VITE_API_BASE ?? '';
@@ -125,4 +126,11 @@ export const api = {
 
   // Usage
   usage: () => get<UsageData>('/api/v1/usage'),
+
+  // API Keys
+  listApiKeys: () => get<ApiKeyItem[]>('/api/v1/auth/api-keys'),
+  createApiKey: (name: string, expires_in_days?: number) =>
+    post<CreateApiKeyResponse>('/api/v1/auth/api-keys', { name, expires_in_days }),
+  deleteApiKey: (keyId: string) =>
+    del<{ ok: boolean }>(`/api/v1/auth/api-keys/${encodeURIComponent(keyId)}`),
 };

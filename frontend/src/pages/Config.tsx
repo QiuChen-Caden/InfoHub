@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { api } from '../api';
-import type { ConfigData, ConfigUpdateRequest, RSSHubFeed, ExternalFeed } from '../types';
+import type { ConfigData, ConfigUpdateRequest, RSSHubFeed, ExternalFeed, ApiKeyItem } from '../types';
 
 const ALL_PLATFORMS = [
   'toutiao', 'baidu', 'wallstreetcn-hot', 'thepaper', 'bilibili-hot-search',
@@ -30,10 +30,6 @@ const TIMEZONE_PRESETS = [
 const ALLOWED_SECRET_KEYS = [
   'ai_api_key', 'ai_api_base',
   'miniflux_api_key',
-  'telegram_bot_token', 'telegram_chat_id',
-  'feishu_webhook_url', 'dingtalk_webhook_url',
-  'email_from', 'email_password', 'email_to',
-  'slack_webhook_url',
 ];
 
 function deepClone<T>(obj: T): T {
@@ -77,6 +73,13 @@ export default function Config() {
   const [secretVal, setSecretVal] = useState('');
   const [secretMsg, setSecretMsg] = useState('');
 
+  // API Keys state
+  const [apiKeys, setApiKeys] = useState<ApiKeyItem[]>([]);
+  const [newKeyName, setNewKeyName] = useState('');
+  const [newKeyExpiry, setNewKeyExpiry] = useState('');
+  const [createdKey, setCreatedKey] = useState('');
+  const [apiKeyMsg, setApiKeyMsg] = useState('');
+
   const load = useCallback(() => {
     api.config().then((cfg) => {
       setOriginal(cfg);
@@ -89,7 +92,11 @@ export default function Config() {
     api.listSecrets().then((r) => setStoredKeys(r.keys)).catch(() => {});
   }, []);
 
-  useEffect(() => { load(); loadSecrets(); }, [load, loadSecrets]);
+  const loadApiKeys = useCallback(() => {
+    api.listApiKeys().then(setApiKeys).catch(() => {});
+  }, []);
+
+  useEffect(() => { load(); loadSecrets(); loadApiKeys(); }, [load, loadSecrets, loadApiKeys]);
 
   const dirty = original ? JSON.stringify(form) !== JSON.stringify(toForm(original)) : false;
 
@@ -389,6 +396,66 @@ export default function Config() {
             <button onClick={storeSecret} className="px-2 py-1 border border-positive text-positive hover:bg-positive/20 cursor-pointer">SAVE</button>
           </div>
           {secretMsg && <span className="text-xs text-accent">{secretMsg}</span>}
+        </div>
+      </div>
+
+      {/* API KEYS */}
+      <div className="bb-panel">
+        <div className="bb-panel-header">API KEYS</div>
+        <div className="bb-panel-body space-y-2 text-xs">
+          {apiKeys.length > 0 && (
+            <div className="space-y-1">
+              {apiKeys.map(k => (
+                <div key={k.id} className="flex items-center justify-between border-b border-border/30 py-0.5">
+                  <div className="flex items-center gap-3">
+                    <span className={k.is_active ? 'text-positive' : 'text-accent/30 line-through'}>{k.name}</span>
+                    <span className="text-accent/40">{k.prefix}***</span>
+                    <span className="text-accent/40">
+                      {k.expires_at ? `expires ${new Date(k.expires_at).toLocaleDateString()}` : 'no expiry'}
+                    </span>
+                  </div>
+                  {k.is_active && (
+                    <button onClick={async () => {
+                      await api.deleteApiKey(k.id);
+                      loadApiKeys();
+                    }} className="text-negative text-xs hover:text-red-400 cursor-pointer">REVOKE</button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+          {createdKey && (
+            <div className="border border-positive p-2 space-y-1">
+              <span className="text-positive">KEY CREATED (copy now, shown only once):</span>
+              <div className="flex gap-1">
+                <input readOnly className={inp} value={createdKey} />
+                <button onClick={() => { navigator.clipboard.writeText(createdKey); setApiKeyMsg('COPIED'); }}
+                  className="px-2 py-1 border border-accent text-accent hover:bg-accent/20 cursor-pointer shrink-0">COPY</button>
+              </div>
+            </div>
+          )}
+          <div className="flex gap-2 items-end">
+            <div className="flex-1">
+              <label className="block text-accent/70 mb-0.5">NAME</label>
+              <input className={inp} value={newKeyName} onChange={e => setNewKeyName(e.target.value)} placeholder="my-agent" />
+            </div>
+            <div className="w-32">
+              <label className="block text-accent/70 mb-0.5">EXPIRES (days)</label>
+              <input type="number" className={inp} value={newKeyExpiry} onChange={e => setNewKeyExpiry(e.target.value)} placeholder="empty=never" />
+            </div>
+            <button onClick={async () => {
+              if (!newKeyName.trim()) return;
+              try {
+                const res = await api.createApiKey(newKeyName.trim(), newKeyExpiry ? Number(newKeyExpiry) : undefined);
+                setCreatedKey(res.key);
+                setNewKeyName('');
+                setNewKeyExpiry('');
+                setApiKeyMsg('');
+                loadApiKeys();
+              } catch (e: unknown) { setApiKeyMsg((e as Error).message); }
+            }} className="px-2 py-1 border border-positive text-positive hover:bg-positive/20 cursor-pointer">CREATE</button>
+          </div>
+          {apiKeyMsg && <span className="text-xs text-accent">{apiKeyMsg}</span>}
         </div>
       </div>
     </div>

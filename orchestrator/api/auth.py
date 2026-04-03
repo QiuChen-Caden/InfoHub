@@ -1,9 +1,12 @@
-"""JWT 认证 — 注册、登录、当前用户"""
+"""JWT + API Key 认证 — 注册、登录、当前用户、API Key 管理"""
 
+import hashlib
 import logging
 import os
+import secrets
 import uuid
 from datetime import datetime, timedelta, timezone
+from typing import Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -11,13 +14,13 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel, EmailStr, Field
 from passlib.context import CryptContext
 import jwt
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
 from db import get_session
-from models_db import Tenant, TenantConfig, TenantSecret
+from models_db import Tenant, TenantConfig, TenantSecret, ApiKey
 from crypto import encrypt
 from miniflux_client import provision_miniflux_user
 
@@ -75,18 +78,68 @@ def _create_token(tenant_id: UUID) -> str:
     )
 
 
+API_KEY_PREFIX = "ihk_"
+MAX_API_KEYS_PER_TENANT = 5
+
+
+def _hash_api_key(raw_key: str) -> str:
+    """SHA-256 hash for API key storage"""
+    return hashlib.sha256(raw_key.encode()).hexdigest()
+
+
 async def get_current_tenant(
     credentials: HTTPAuthorizationCredentials = Depends(security),
     session: AsyncSession = Depends(get_session),
 ) -> Tenant:
-    """从 JWT 解析当前租户，注入到路由"""
+    """从 JWT 或 API Key 解析当前租户"""
+    token = credentials.credentials
+
+    # API Key 认证
+    if token.startswith(API_KEY_PREFIX):
+        key_hash = _hash_api_key(token)
+        result = await session.execute(
+            select(ApiKey).where(
+                ApiKey.key_hash == key_hash,
+                ApiKey.is_active == True,
+            )
+        )
+        api_key = result.scalar_one_or_none()
+        if not api_key:
+            raise HTTPException(status_code=401, detail="无效的 API Key")
+        if api_key.expires_at and api_key.expires_at < datetime.now(timezone.utc):
+            raise HTTPException(status_code=401, detail="API Key 已过期")
+        tenant = await session.get(Tenant, api_key.tenant_id)
+        if not tenant or not tenant.is_active:
+            raise HTTPException(status_code=401, detail="账户不存在或已禁用")
+        return tenant
+
+    # JWT 认证
     try:
-        payload = jwt.decode(credentials.credentials, SECRET_KEY, algorithms=[ALGORITHM])
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         tenant_id = UUID(payload["sub"])
     except (jwt.InvalidTokenError, KeyError, ValueError) as e:
         log.warning(f"JWT 验证失败: {type(e).__name__}")
         raise HTTPException(status_code=401, detail="无效的认证令牌")
 
+    tenant = await session.get(Tenant, tenant_id)
+    if not tenant or not tenant.is_active:
+        raise HTTPException(status_code=401, detail="账户不存在或已禁用")
+    return tenant
+
+
+async def _get_current_tenant_jwt_only(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    session: AsyncSession = Depends(get_session),
+) -> Tenant:
+    """仅 JWT 认证（API Key 管理端点用，防止用 API Key 管理自身）"""
+    token = credentials.credentials
+    if token.startswith(API_KEY_PREFIX):
+        raise HTTPException(status_code=403, detail="API Key 管理需要使用 JWT 登录")
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        tenant_id = UUID(payload["sub"])
+    except (jwt.InvalidTokenError, KeyError, ValueError):
+        raise HTTPException(status_code=401, detail="无效的认证令牌")
     tenant = await session.get(Tenant, tenant_id)
     if not tenant or not tenant.is_active:
         raise HTTPException(status_code=401, detail="账户不存在或已禁用")
@@ -163,3 +216,111 @@ async def me(tenant: Tenant = Depends(get_current_tenant)):
         plan=tenant.plan,
         created_at=tenant.created_at,
     )
+
+
+# ---- API Key 管理 ----
+
+class CreateApiKeyRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=50)
+    expires_in_days: Optional[int] = Field(None, ge=1, le=3650)
+
+
+class ApiKeyResponse(BaseModel):
+    id: str
+    name: str
+    prefix: str
+    expires_at: Optional[datetime]
+    created_at: datetime
+    is_active: bool
+
+
+class CreateApiKeyResponse(BaseModel):
+    key: str
+    id: str
+    name: str
+    prefix: str
+    expires_at: Optional[datetime]
+
+
+@router.post("/api-keys", response_model=CreateApiKeyResponse)
+async def create_api_key(
+    req: CreateApiKeyRequest,
+    tenant: Tenant = Depends(_get_current_tenant_jwt_only),
+    session: AsyncSession = Depends(get_session),
+):
+    # 检查数量限制
+    count_result = await session.execute(
+        select(func.count(ApiKey.id)).where(
+            ApiKey.tenant_id == tenant.id,
+            ApiKey.is_active == True,
+        )
+    )
+    count = count_result.scalar() or 0
+    if count >= MAX_API_KEYS_PER_TENANT:
+        raise HTTPException(status_code=400, detail=f"最多创建 {MAX_API_KEYS_PER_TENANT} 个 API Key")
+
+    # 生成 key
+    raw_key = API_KEY_PREFIX + secrets.token_hex(16)
+    key_hash = _hash_api_key(raw_key)
+    prefix = raw_key[:8]
+
+    expires_at = None
+    if req.expires_in_days:
+        expires_at = datetime.now(timezone.utc) + timedelta(days=req.expires_in_days)
+
+    api_key = ApiKey(
+        tenant_id=tenant.id,
+        name=req.name,
+        key_hash=key_hash,
+        prefix=prefix,
+        expires_at=expires_at,
+    )
+    session.add(api_key)
+    await session.commit()
+
+    log.info(f"API Key 创建: tenant={tenant.id} name={req.name} prefix={prefix}")
+    return CreateApiKeyResponse(
+        key=raw_key,
+        id=str(api_key.id),
+        name=api_key.name,
+        prefix=prefix,
+        expires_at=expires_at,
+    )
+
+
+@router.get("/api-keys", response_model=list[ApiKeyResponse])
+async def list_api_keys(
+    tenant: Tenant = Depends(_get_current_tenant_jwt_only),
+    session: AsyncSession = Depends(get_session),
+):
+    result = await session.execute(
+        select(ApiKey)
+        .where(ApiKey.tenant_id == tenant.id)
+        .order_by(ApiKey.created_at.desc())
+    )
+    return [
+        ApiKeyResponse(
+            id=str(k.id),
+            name=k.name,
+            prefix=k.prefix,
+            expires_at=k.expires_at,
+            created_at=k.created_at,
+            is_active=k.is_active,
+        )
+        for k in result.scalars().all()
+    ]
+
+
+@router.delete("/api-keys/{key_id}")
+async def revoke_api_key(
+    key_id: str,
+    tenant: Tenant = Depends(_get_current_tenant_jwt_only),
+    session: AsyncSession = Depends(get_session),
+):
+    api_key = await session.get(ApiKey, UUID(key_id))
+    if not api_key or api_key.tenant_id != tenant.id:
+        raise HTTPException(status_code=404, detail="API Key 不存在")
+    api_key.is_active = False
+    await session.commit()
+    log.info(f"API Key 撤销: tenant={tenant.id} key_id={key_id}")
+    return {"ok": True}

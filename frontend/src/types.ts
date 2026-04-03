@@ -101,3 +101,20 @@ export interface ExternalFeed {
   name: string;
   category: string;
 }
+
+export interface ApiKeyItem {
+  id: string;
+  name: string;
+  prefix: string;
+  expires_at: string | null;
+  created_at: string;
+  is_active: boolean;
+}
+
+export interface CreateApiKeyResponse {
+  key: string;
+  id: string;
+  name: string;
+  prefix: string;
+  expires_at: string | null;
+}

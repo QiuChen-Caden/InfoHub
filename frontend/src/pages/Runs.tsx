@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { api } from '../api';
+import { formatTime } from '../tz';
 import type { RunItem } from '../types';
 
 export default function Runs() {
@@ -52,10 +53,10 @@ export default function Runs() {
                 <tr key={r.id} className={rowBg}>
                   <td className="px-2 py-1">{r.id}</td>
                   <td className="px-2 py-1 text-accent/70 whitespace-nowrap">
-                    {r.started_at.replace('T', ' ').slice(0, 19)}
+                    {formatTime(r.started_at, true)}
                   </td>
                   <td className="px-2 py-1 text-accent/70 whitespace-nowrap">
-                    {r.finished_at?.replace('T', ' ').slice(0, 19) ?? '—'}
+                    {formatTime(r.finished_at, true)}
                   </td>
                   <td className="px-2 py-1">{r.hotlist_count}</td>
                   <td className="px-2 py-1">{r.rss_count}</td>

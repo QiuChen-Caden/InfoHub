@@ -1,4 +1,5 @@
 import type { NewsItem } from '../types';
+import { formatTime } from '../tz';
 
 interface Props {
   items: NewsItem[];
@@ -55,7 +56,7 @@ export default function NewsTable({ items, compact }: Props) {
               </td>
               {!compact && <td className="px-2 py-1 text-accent/50 truncate max-w-[120px]">{n.tags}</td>}
               <td className="px-2 py-1 text-accent/50 whitespace-nowrap">
-                {n.created_at.replace('T', ' ').slice(0, 16)}
+                {formatTime(n.created_at)}
               </td>
             </tr>
           ))}
