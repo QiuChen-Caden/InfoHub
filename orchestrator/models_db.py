@@ -23,6 +23,7 @@ class Tenant(Base):
     email = Column(String(255), unique=True, nullable=False)
     password_hash = Column(String(255), nullable=False)
     plan = Column(String(20), default="free")
+    role = Column(String(20), default="user")
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     is_active = Column(Boolean, default=True)
 

@@ -119,7 +119,7 @@ export default function Logs() {
   return (
     <div className="bb-panel flex flex-col h-full">
       <div className="bb-panel-header flex items-center justify-between">
-        <span>PIPELINE LOGS</span>
+        <span>流水线日志</span>
         <div className="flex items-center gap-3">
           <label className="flex items-center gap-1 cursor-pointer">
             <input
@@ -128,7 +128,7 @@ export default function Logs() {
               onChange={(e) => setAutoScroll(e.target.checked)}
               className="accent-accent"
             />
-            <span className="text-accent/70">AUTO-SCROLL</span>
+            <span className="text-accent/70">自动滚动</span>
           </label>
           <button
             onClick={connected ? stopStream : startStream}
@@ -138,13 +138,13 @@ export default function Logs() {
                 : 'bg-accent/20 text-accent hover:bg-accent/30'
             }`}
           >
-            {connected ? 'DISCONNECT' : 'CONNECT'}
+            {connected ? '断开' : '连接'}
           </button>
           <button
             onClick={() => setLogs([])}
             className="px-2 py-0.5 text-xs font-bold text-accent/50 hover:text-accent"
           >
-            CLEAR
+            清空
           </button>
           <span
             className={`w-2 h-2 rounded-full ${
@@ -156,7 +156,7 @@ export default function Logs() {
       <div className="bb-panel-body flex-1 overflow-y-auto font-mono text-xs leading-5 p-2 bg-[#0a0e14]">
         {logs.length === 0 && (
           <p className="text-accent/30 text-center mt-8">
-            {connected ? 'Waiting for logs...' : 'No logs. Trigger a RUN to see output.'}
+            {connected ? '等待日志...' : '暂无日志,触发运行以查看输出。'}
           </p>
         )}
         {logs.map((entry, i) => (

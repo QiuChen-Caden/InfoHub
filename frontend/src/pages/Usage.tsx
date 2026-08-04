@@ -17,6 +17,8 @@ const COLORS = {
   crosshair: '#FF8C00',
 };
 
+const LABEL_ZH: Record<string, string> = { hotlist: '热榜', rss: 'RSS', matched: '匹配', pushed: '推送' };
+
 function BloombergTooltip({ active, payload, label }: { active?: boolean; payload?: Array<{ dataKey: string; value: number; color: string }>; label?: string }) {
   if (!active || !payload?.length) return null;
   return (
@@ -24,7 +26,7 @@ function BloombergTooltip({ active, payload, label }: { active?: boolean; payloa
       <div className="text-accent/70 border-b border-border pb-0.5 mb-0.5">{label}</div>
       {payload.map((p) => (
         <div key={p.dataKey} className="flex justify-between gap-4">
-          <span style={{ color: p.color }}>{p.dataKey.toUpperCase()}</span>
+          <span style={{ color: p.color }}>{LABEL_ZH[p.dataKey] || p.dataKey}</span>
           <span style={{ color: p.color }} className="font-bold">{p.value.toLocaleString()}</span>
         </div>
       ))}
@@ -45,13 +47,13 @@ export default function Usage() {
       if (rRes.status === 'fulfilled') setRuns([...rRes.value].reverse());
       if (uRes.status === 'fulfilled') setUsage(uRes.value);
       if (rRes.status === 'rejected' && uRes.status === 'rejected') {
-        setError((rRes as PromiseRejectedResult).reason?.message || 'Load failed');
+        setError((rRes as PromiseRejectedResult).reason?.message || '加载失败');
       }
     });
   }, []);
 
-  if (error) return <p className="text-negative">ERR: {error}</p>;
-  if (!runs.length && !usage) return <p className="text-accent/50">LOADING...</p>;
+  if (error) return <p className="text-negative">错误: {error}</p>;
+  if (!runs.length && !usage) return <p className="text-accent/50">加载中...</p>;
 
   const data = runs.map((r) => ({
     run: `#${r.id}`,
@@ -73,11 +75,11 @@ export default function Usage() {
       {/* Usage metering panel */}
       {usage && (
         <div className="bb-panel">
-          <div className="bb-panel-header">PLAN &amp; USAGE</div>
+          <div className="bb-panel-header">套餐与用量</div>
           <div className="bb-panel-body text-xs space-y-2">
             <div className="flex items-center gap-4">
-              <span className="text-accent/70">PLAN:</span>
-              <span className="text-accent font-bold">{usage.plan.toUpperCase()}</span>
+              <span className="text-accent/70">套餐:</span>
+              <span className="text-accent font-bold">{({free:'免费',pro:'专业',enterprise:'企业'} as Record<string,string>)[usage.plan] || usage.plan}</span>
             </div>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
               {Object.entries(usage.usage).map(([action, info]) => {
@@ -90,7 +92,7 @@ export default function Usage() {
                       <div className={`h-1 ${pct >= 90 ? 'bg-red-500' : pct >= 70 ? 'bg-yellow-500' : 'bg-green-500'}`} style={{ width: `${pct}%` }} />
                     </div>
                     {(info.overage_cost_cents ?? 0) > 0 && (
-                      <div className="text-negative mt-0.5">OVERAGE: ${((info.overage_cost_cents ?? 0) / 100).toFixed(2)}</div>
+                      <div className="text-negative mt-0.5">超额: ${((info.overage_cost_cents ?? 0) / 100).toFixed(2)}</div>
                     )}
                   </div>
                 );
@@ -104,15 +106,15 @@ export default function Usage() {
       {latest && (
         <div className="bb-panel">
           <div className="bb-panel-body flex items-center gap-4 text-xs py-1">
-            <span className="text-accent/50">LATEST RUN {latest.run}</span>
+            <span className="text-accent/50">最近运行 {latest.run}</span>
             <span className="text-accent/30">|</span>
-            <span style={{ color: COLORS.hotlist }}>HOTLIST <span className="font-bold">{latest.hotlist}</span></span>
+            <span style={{ color: COLORS.hotlist }}>热榜 <span className="font-bold">{latest.hotlist}</span></span>
             <span style={{ color: COLORS.rss }}>RSS <span className="font-bold">{latest.rss}</span></span>
-            <span style={{ color: COLORS.matched }}>MATCHED <span className="font-bold">{latest.matched}</span></span>
-            <span style={{ color: COLORS.pushed }}>PUSHED <span className="font-bold">{latest.pushed}</span></span>
+            <span style={{ color: COLORS.matched }}>匹配 <span className="font-bold">{latest.matched}</span></span>
+            <span style={{ color: COLORS.pushed }}>推送 <span className="font-bold">{latest.pushed}</span></span>
             <span className="text-accent/30">|</span>
-            <span className="text-accent/50">AVG MATCHED <span className="text-link">{avgMatched}</span></span>
-            <span className="text-accent/50">AVG PUSHED <span className="text-accent">{avgPushed}</span></span>
+            <span className="text-accent/50">平均匹配 <span className="text-link">{avgMatched}</span></span>
+            <span className="text-accent/50">平均推送 <span className="text-accent">{avgPushed}</span></span>
           </div>
         </div>
       )}
@@ -121,8 +123,8 @@ export default function Usage() {
       {data.length > 0 && (
         <div className="bb-panel">
           <div className="bb-panel-header flex items-center justify-between">
-            <span>HOTLIST / RSS / MATCHED PER RUN</span>
-            <span className="text-accent/40 text-[9px] font-normal tracking-normal">AREA CHART &middot; {data.length} RUNS</span>
+            <span>每次运行 热榜/RSS/匹配</span>
+            <span className="text-accent/40 text-[9px] font-normal tracking-normal">面积图 &middot; {data.length} 次</span>
           </div>
           <div className="bb-panel-body" style={{ background: 'linear-gradient(180deg, #0a0a0a 0%, #000000 100%)' }}>
             <ResponsiveContainer width="100%" height={300}>
@@ -145,8 +147,8 @@ export default function Usage() {
                 <XAxis dataKey="run" tick={axisStyle} axisLine={{ stroke: '#333' }} tickLine={false} />
                 <YAxis tick={axisStyle} axisLine={false} tickLine={false} />
                 <Tooltip content={<BloombergTooltip />} cursor={{ stroke: COLORS.crosshair, strokeWidth: 1, strokeDasharray: '3 3' }} />
-                <Legend wrapperStyle={legendStyle} formatter={(v: string) => <span style={{ color: '#888', fontSize: 9 }}>{v.toUpperCase()}</span>} />
-                <ReferenceLine y={avgMatched} stroke={COLORS.matched} strokeDasharray="6 3" strokeOpacity={0.4} label={{ value: `AVG ${avgMatched}`, fill: COLORS.matched, fontSize: 9, position: 'right' }} />
+                <Legend wrapperStyle={legendStyle} formatter={(v: string) => <span style={{ color: '#888', fontSize: 9 }}>{LABEL_ZH[v] || v}</span>} />
+                <ReferenceLine y={avgMatched} stroke={COLORS.matched} strokeDasharray="6 3" strokeOpacity={0.4} label={{ value: `平均 ${avgMatched}`, fill: COLORS.matched, fontSize: 9, position: 'right' }} />
                 <Area type="monotone" dataKey="hotlist" stroke={COLORS.hotlist} strokeWidth={1.5} fill="url(#gradHotlist)" dot={false} activeDot={{ r: 3, stroke: COLORS.hotlist, fill: '#000' }} />
                 <Area type="monotone" dataKey="rss" stroke={COLORS.rss} strokeWidth={1.5} fill="url(#gradRss)" dot={false} activeDot={{ r: 3, stroke: COLORS.rss, fill: '#000' }} />
                 <Area type="monotone" dataKey="matched" stroke={COLORS.matched} strokeWidth={1.5} fill="url(#gradMatched)" dot={false} activeDot={{ r: 3, stroke: COLORS.matched, fill: '#000' }} />
@@ -160,8 +162,8 @@ export default function Usage() {
       {data.length > 0 && (
         <div className="bb-panel">
           <div className="bb-panel-header flex items-center justify-between">
-            <span>PUSHED COUNT PER RUN</span>
-            <span className="text-accent/40 text-[9px] font-normal tracking-normal">BAR CHART &middot; {data.length} RUNS</span>
+            <span>每次运行推送数</span>
+            <span className="text-accent/40 text-[9px] font-normal tracking-normal">柱状图 &middot; {data.length} 次</span>
           </div>
           <div className="bb-panel-body" style={{ background: 'linear-gradient(180deg, #0a0a0a 0%, #000000 100%)' }}>
             <ResponsiveContainer width="100%" height={240}>
@@ -176,7 +178,7 @@ export default function Usage() {
                 <XAxis dataKey="run" tick={axisStyle} axisLine={{ stroke: '#333' }} tickLine={false} />
                 <YAxis tick={axisStyle} axisLine={false} tickLine={false} />
                 <Tooltip content={<BloombergTooltip />} cursor={{ fill: 'rgba(255,140,0,0.06)' }} />
-                <ReferenceLine y={avgPushed} stroke={COLORS.pushed} strokeDasharray="6 3" strokeOpacity={0.4} label={{ value: `AVG ${avgPushed}`, fill: COLORS.pushed, fontSize: 9, position: 'right' }} />
+                <ReferenceLine y={avgPushed} stroke={COLORS.pushed} strokeDasharray="6 3" strokeOpacity={0.4} label={{ value: `平均 ${avgPushed}`, fill: COLORS.pushed, fontSize: 9, position: 'right' }} />
                 <Bar dataKey="pushed" fill="url(#gradPushed)" maxBarSize={20} />
               </BarChart>
             </ResponsiveContainer>

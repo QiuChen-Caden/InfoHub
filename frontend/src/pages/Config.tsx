@@ -104,7 +104,7 @@ export default function Config() {
     setSaving(true); setMsg(null);
     try {
       await api.saveConfig(form);
-      setMsg({ text: 'CONFIG SAVED', ok: true });
+      setMsg({ text: '配置已保存', ok: true });
       load();
     } catch (e: unknown) {
       setMsg({ text: (e as Error).message, ok: false });
@@ -113,8 +113,8 @@ export default function Config() {
 
   const cancel = () => { if (original) setForm(toForm(original)); setMsg(null); };
 
-  if (error) return <p className="text-negative">ERR: {error}</p>;
-  if (!original) return <p className="text-accent/50">LOADING...</p>;
+  if (error) return <p className="text-negative">错误: {error}</p>;
+  if (!original) return <p className="text-accent/50">加载中...</p>;
 
   const togglePlatform = (p: string) => {
     setForm(f => ({
@@ -166,7 +166,7 @@ export default function Config() {
     if (!secretVal) return;
     try {
       await api.storeSecret(secretKey, secretVal);
-      setSecretMsg(`${secretKey} SAVED`);
+      setSecretMsg(`${secretKey} 已保存`);
       setSecretVal('');
       loadSecrets();
     } catch (e: unknown) { setSecretMsg((e as Error).message); }
@@ -186,27 +186,27 @@ export default function Config() {
 
   return (
     <div className="space-y-2 pb-4">
-      {/* TOP SAVE BAR — always visible */}
+      {/* TOP SAVE BAR - always visible */}
       <div className="bb-panel">
         <div className="bb-panel-body flex items-center gap-3 py-1">
           {dirty ? (
-            <span className="text-accent text-xs animate-blink">● UNSAVED CHANGES</span>
+            <span className="text-accent text-xs animate-blink">● 有未保存更改</span>
           ) : (
-            <span className="text-positive text-xs">● CONFIG IN SYNC</span>
+            <span className="text-positive text-xs">● 配置已同步</span>
           )}
           <div className="flex-1" />
           {msg && <span className={`text-xs ${msg.ok ? 'text-positive' : 'text-negative'}`}>{msg.text}</span>}
-          <button onClick={cancel} className="px-3 py-1 border border-border text-accent text-xs hover:bg-border/30 cursor-pointer">CANCEL</button>
+          <button onClick={cancel} className="px-3 py-1 border border-border text-accent text-xs hover:bg-border/30 cursor-pointer">取消</button>
           <button onClick={save} disabled={saving}
             className="px-3 py-1 bg-accent text-black text-xs font-bold hover:bg-accent/80 disabled:opacity-30 cursor-pointer">
-            {saving ? 'SAVING...' : '[ SAVE CONFIG ]'}
+            {saving ? '保存中...' : '[ 保存配置 ]'}
           </button>
         </div>
       </div>
 
       {/* PLATFORMS */}
       <div className="bb-panel">
-        <div className="bb-panel-header">PLATFORMS</div>
+        <div className="bb-panel-header">平台</div>
         <div className="bb-panel-body flex flex-wrap gap-1">
           {ALL_PLATFORMS.map(p => (
             <button key={p} onClick={() => togglePlatform(p)}
@@ -223,13 +223,13 @@ export default function Config() {
 
       {/* INTEREST TAGS */}
       <div className="bb-panel">
-        <div className="bb-panel-header">INTEREST TAGS</div>
+        <div className="bb-panel-header">兴趣标签</div>
         <div className="bb-panel-body space-y-1">
           <div className="flex flex-wrap gap-1">
             {form.interests!.map((t, i) => (
               <span key={i} className="inline-flex items-center gap-1 px-1 py-0.5 border border-positive text-positive text-xs">
-                <button onClick={() => moveTag(i, -1)} className="hover:text-accent cursor-pointer" title="Move up">&uarr;</button>
-                <button onClick={() => moveTag(i, 1)} className="hover:text-accent cursor-pointer" title="Move down">&darr;</button>
+                <button onClick={() => moveTag(i, -1)} className="hover:text-accent cursor-pointer" title="上移">&uarr;</button>
+                <button onClick={() => moveTag(i, 1)} className="hover:text-accent cursor-pointer" title="下移">&darr;</button>
                 {t}
                 <button onClick={() => removeTag(i)} className="text-negative hover:text-red-400 cursor-pointer">&times;</button>
               </span>
@@ -237,27 +237,27 @@ export default function Config() {
           </div>
           <div className="flex gap-1">
             <input className={inp} value={newTag} onChange={e => setNewTag(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && addTag()} placeholder="Add tag..." />
-            <button onClick={addTag} className="px-2 py-1 border border-positive text-positive text-xs hover:bg-positive/20 cursor-pointer">ADD</button>
+              onKeyDown={e => e.key === 'Enter' && addTag()} placeholder="添加标签..." />
+            <button onClick={addTag} className="px-2 py-1 border border-positive text-positive text-xs hover:bg-positive/20 cursor-pointer">添加</button>
           </div>
         </div>
       </div>
 
       {/* AI CONFIGURATION */}
       <div className="bb-panel">
-        <div className="bb-panel-header">AI CONFIGURATION</div>
+        <div className="bb-panel-header">AI 配置</div>
         <div className="bb-panel-body grid md:grid-cols-2 gap-2 text-xs">
-          <div className="flex items-center gap-2"><span className={lbl}>MODEL:</span><input className={inp} value={String(ai.model ?? '')} onChange={e => updateAI('model', e.target.value)} /></div>
-          <div className="flex items-center gap-2"><span className={lbl}>TIMEOUT:</span><input type="number" className={inp} value={String(ai.timeout ?? 120)} onChange={e => updateAI('timeout', Number(e.target.value))} /></div>
-          <div className="flex items-center gap-2"><span className={lbl}>MAX_TOKENS:</span><input type="number" className={inp} value={String(ai.max_tokens ?? 5000)} onChange={e => updateAI('max_tokens', Number(e.target.value))} /></div>
-          <div className="flex items-center gap-2"><span className={lbl}>BATCH_SIZE:</span><input type="number" className={inp} value={String(ai.batch_size ?? 200)} onChange={e => updateAI('batch_size', Number(e.target.value))} /></div>
-          <div className="flex items-center gap-2"><span className={lbl}>BATCH_INTERVAL:</span><input type="number" className={inp} value={String(ai.batch_interval ?? 2)} onChange={e => updateAI('batch_interval', Number(e.target.value))} /></div>
-          <div className="flex items-center gap-2"><span className={lbl}>MIN_SCORE:</span><input type="number" step="0.1" min="0" max="1" className={inp} value={String(ai.min_score ?? 0.7)} onChange={e => updateAI('min_score', Number(e.target.value))} /></div>
+          <div className="flex items-center gap-2"><span className={lbl}>模型:</span><input className={inp} value={String(ai.model ?? '')} onChange={e => updateAI('model', e.target.value)} /></div>
+          <div className="flex items-center gap-2"><span className={lbl}>超时:</span><input type="number" className={inp} value={String(ai.timeout ?? 120)} onChange={e => updateAI('timeout', Number(e.target.value))} /></div>
+          <div className="flex items-center gap-2"><span className={lbl}>最大Token:</span><input type="number" className={inp} value={String(ai.max_tokens ?? 5000)} onChange={e => updateAI('max_tokens', Number(e.target.value))} /></div>
+          <div className="flex items-center gap-2"><span className={lbl}>批大小:</span><input type="number" className={inp} value={String(ai.batch_size ?? 200)} onChange={e => updateAI('batch_size', Number(e.target.value))} /></div>
+          <div className="flex items-center gap-2"><span className={lbl}>批间隔:</span><input type="number" className={inp} value={String(ai.batch_interval ?? 2)} onChange={e => updateAI('batch_interval', Number(e.target.value))} /></div>
+          <div className="flex items-center gap-2"><span className={lbl}>最低评分:</span><input type="number" step="0.1" min="0" max="1" className={inp} value={String(ai.min_score ?? 0.7)} onChange={e => updateAI('min_score', Number(e.target.value))} /></div>
           <div className="flex items-center gap-2 md:col-span-2">
-            <span className={lbl}>SUMMARY:</span>
+            <span className={lbl}>摘要:</span>
             <button onClick={() => updateAI('summary_enabled', !(ai.summary_enabled ?? true))}
               className={`px-2 py-0.5 border text-xs cursor-pointer ${(ai.summary_enabled ?? true) ? 'border-positive text-positive' : 'border-negative text-negative'}`}>
-              {(ai.summary_enabled ?? true) ? 'ENABLED' : 'DISABLED'}
+              {(ai.summary_enabled ?? true) ? '已启用' : '已禁用'}
             </button>
           </div>
         </div>
@@ -265,32 +265,32 @@ export default function Config() {
 
       {/* NOTIFICATION CHANNELS */}
       <div className="bb-panel">
-        <div className="bb-panel-header">NOTIFICATION CHANNELS</div>
+        <div className="bb-panel-header">通知渠道</div>
         <div className="bb-panel-body space-y-2 text-xs">
-          <div className="flex items-center gap-2"><span className={lbl}>BATCH_INTERVAL:</span><input type="number" className={inp} value={String(notif.batch_interval ?? 2)} onChange={e => updateNotif('batch_interval', Number(e.target.value))} /></div>
+          <div className="flex items-center gap-2"><span className={lbl}>批间隔:</span><input type="number" className={inp} value={String(notif.batch_interval ?? 2)} onChange={e => updateNotif('batch_interval', Number(e.target.value))} /></div>
           <div className="border-t border-border pt-1 mt-1"><span className="text-link text-xs">TELEGRAM</span></div>
-          <div className="flex items-center gap-2"><span className={lbl}>BOT_TOKEN:</span><input type="password" className={inp} value={String(notif.telegram_bot_token ?? '')} onChange={e => updateNotif('telegram_bot_token', e.target.value)} /></div>
-          <div className="flex items-center gap-2"><span className={lbl}>CHAT_ID:</span><input type="password" className={inp} value={String(notif.telegram_chat_id ?? '')} onChange={e => updateNotif('telegram_chat_id', e.target.value)} /></div>
+          <div className="flex items-center gap-2"><span className={lbl}>机器人Token:</span><input type="password" className={inp} value={String(notif.telegram_bot_token ?? '')} onChange={e => updateNotif('telegram_bot_token', e.target.value)} /></div>
+          <div className="flex items-center gap-2"><span className={lbl}>群组ID:</span><input type="password" className={inp} value={String(notif.telegram_chat_id ?? '')} onChange={e => updateNotif('telegram_chat_id', e.target.value)} /></div>
           <div className="border-t border-border pt-1 mt-1"><span className="text-link text-xs">FEISHU</span></div>
-          <div className="flex items-center gap-2"><span className={lbl}>WEBHOOK_URL:</span><input type="password" className={inp} value={String(notif.feishu_webhook_url ?? '')} onChange={e => updateNotif('feishu_webhook_url', e.target.value)} /></div>
+          <div className="flex items-center gap-2"><span className={lbl}>Webhook地址:</span><input type="password" className={inp} value={String(notif.feishu_webhook_url ?? '')} onChange={e => updateNotif('feishu_webhook_url', e.target.value)} /></div>
           <div className="border-t border-border pt-1 mt-1"><span className="text-link text-xs">DINGTALK</span></div>
-          <div className="flex items-center gap-2"><span className={lbl}>WEBHOOK_URL:</span><input type="password" className={inp} value={String(notif.dingtalk_webhook_url ?? '')} onChange={e => updateNotif('dingtalk_webhook_url', e.target.value)} /></div>
-          <div className="border-t border-border pt-1 mt-1"><span className="text-link text-xs">EMAIL</span></div>
-          <div className="flex items-center gap-2"><span className={lbl}>FROM:</span><input className={inp} value={String(notif.email_from ?? '')} onChange={e => updateNotif('email_from', e.target.value)} /></div>
-          <div className="flex items-center gap-2"><span className={lbl}>PASSWORD:</span><input type="password" className={inp} value={String(notif.email_password ?? '')} onChange={e => updateNotif('email_password', e.target.value)} /></div>
-          <div className="flex items-center gap-2"><span className={lbl}>TO:</span><input className={inp} value={String(notif.email_to ?? '')} onChange={e => updateNotif('email_to', e.target.value)} /></div>
+          <div className="flex items-center gap-2"><span className={lbl}>Webhook地址:</span><input type="password" className={inp} value={String(notif.dingtalk_webhook_url ?? '')} onChange={e => updateNotif('dingtalk_webhook_url', e.target.value)} /></div>
+          <div className="border-t border-border pt-1 mt-1"><span className="text-link text-xs">邮件</span></div>
+          <div className="flex items-center gap-2"><span className={lbl}>发件人:</span><input className={inp} value={String(notif.email_from ?? '')} onChange={e => updateNotif('email_from', e.target.value)} /></div>
+          <div className="flex items-center gap-2"><span className={lbl}>密码:</span><input type="password" className={inp} value={String(notif.email_password ?? '')} onChange={e => updateNotif('email_password', e.target.value)} /></div>
+          <div className="flex items-center gap-2"><span className={lbl}>收件人:</span><input className={inp} value={String(notif.email_to ?? '')} onChange={e => updateNotif('email_to', e.target.value)} /></div>
           <div className="border-t border-border pt-1 mt-1"><span className="text-link text-xs">SLACK</span></div>
-          <div className="flex items-center gap-2"><span className={lbl}>WEBHOOK_URL:</span><input type="password" className={inp} value={String(notif.slack_webhook_url ?? '')} onChange={e => updateNotif('slack_webhook_url', e.target.value)} /></div>
+          <div className="flex items-center gap-2"><span className={lbl}>Webhook地址:</span><input type="password" className={inp} value={String(notif.slack_webhook_url ?? '')} onChange={e => updateNotif('slack_webhook_url', e.target.value)} /></div>
         </div>
       </div>
 
       {/* RSS SOURCES */}
       <div className="bb-panel">
-        <div className="bb-panel-header">RSS SOURCES</div>
+        <div className="bb-panel-header">RSS 源</div>
         <div className="bb-panel-body space-y-2 text-xs">
-          <div><span className="text-link">RSSHUB FEEDS</span></div>
+          <div><span className="text-link">RSSHub 订阅</span></div>
           <table className="w-full"><thead><tr className="text-accent/70 text-left">
-            <th className="px-1">ROUTE</th><th className="px-1">NAME</th><th className="px-1">CATEGORY</th><th className="w-8"></th>
+            <th className="px-1">路由</th><th className="px-1">名称</th><th className="px-1">分类</th><th className="w-8"></th>
           </tr></thead><tbody>
             {form.rsshub_feeds!.map((f, i) => (
               <tr key={i} className="border-t border-border/50">
@@ -302,11 +302,11 @@ export default function Config() {
             ))}
           </tbody></table>
           <button onClick={() => setForm(f => ({ ...f, rsshub_feeds: [...f.rsshub_feeds!, { route: '', name: '', category: '' }] }))}
-            className="px-2 py-0.5 border border-positive text-positive text-xs hover:bg-positive/20 cursor-pointer">+ ADD RSSHUB FEED</button>
+            className="px-2 py-0.5 border border-positive text-positive text-xs hover:bg-positive/20 cursor-pointer">+ 添加 RSSHub 订阅</button>
 
-          <div className="border-t border-border pt-2 mt-2"><span className="text-link">EXTERNAL FEEDS</span></div>
+          <div className="border-t border-border pt-2 mt-2"><span className="text-link">外部订阅</span></div>
           <table className="w-full"><thead><tr className="text-accent/70 text-left">
-            <th className="px-1">URL</th><th className="px-1">NAME</th><th className="px-1">CATEGORY</th><th className="w-8"></th>
+            <th className="px-1">URL</th><th className="px-1">名称</th><th className="px-1">分类</th><th className="w-8"></th>
           </tr></thead><tbody>
             {form.external_feeds!.map((f, i) => (
               <tr key={i} className="border-t border-border/50">
@@ -318,16 +318,16 @@ export default function Config() {
             ))}
           </tbody></table>
           <button onClick={() => setForm(f => ({ ...f, external_feeds: [...f.external_feeds!, { url: '', name: '', category: '' }] }))}
-            className="px-2 py-0.5 border border-positive text-positive text-xs hover:bg-positive/20 cursor-pointer">+ ADD EXTERNAL FEED</button>
+            className="px-2 py-0.5 border border-positive text-positive text-xs hover:bg-positive/20 cursor-pointer">+ 添加外部订阅</button>
         </div>
       </div>
 
       {/* SYSTEM */}
       <div className="bb-panel">
-        <div className="bb-panel-header">SYSTEM</div>
+        <div className="bb-panel-header">系统</div>
         <div className="bb-panel-body space-y-2 text-xs">
           <div>
-            <span className="text-accent/70 text-xs">TIMEZONE:</span>
+            <span className="text-accent/70 text-xs">时区:</span>
             <div className="flex flex-wrap gap-1 mt-1">
               {TIMEZONE_PRESETS.map(p => (
                 <button key={p.value} onClick={() => setForm(f => ({ ...f, timezone: p.value }))}
@@ -346,7 +346,7 @@ export default function Config() {
             </div>
           </div>
           <div>
-            <span className="text-accent/70 text-xs">CRON_SCHEDULE:</span>
+            <span className="text-accent/70 text-xs">定时计划:</span>
             <div className="flex flex-wrap gap-1 mt-1">
               {CRON_PRESETS.map(p => (
                 <button key={p.value} onClick={() => setForm(f => ({ ...f, cron_schedule: p.value }))}
@@ -369,31 +369,31 @@ export default function Config() {
 
       {/* SECRETS */}
       <div className="bb-panel">
-        <div className="bb-panel-header">SECRETS</div>
+        <div className="bb-panel-header">密钥</div>
         <div className="bb-panel-body space-y-2 text-xs">
           {storedKeys.length > 0 && (
             <div className="space-y-1">
-              <span className="text-accent/70">STORED KEYS:</span>
+              <span className="text-accent/70">已存密钥:</span>
               {storedKeys.map(k => (
                 <div key={k} className="flex items-center justify-between border-b border-border/30 py-0.5">
                   <span className="text-positive">{k}</span>
-                  <button onClick={() => deleteSecret(k)} className="text-negative text-xs hover:text-red-400 cursor-pointer">DELETE</button>
+                  <button onClick={() => deleteSecret(k)} className="text-negative text-xs hover:text-red-400 cursor-pointer">删除</button>
                 </div>
               ))}
             </div>
           )}
           <div className="flex gap-2 items-end">
             <div className="flex-1">
-              <label className="block text-accent/70 mb-0.5">KEY</label>
+              <label className="block text-accent/70 mb-0.5">键</label>
               <select className={inp} value={secretKey} onChange={e => setSecretKey(e.target.value)}>
                 {ALLOWED_SECRET_KEYS.map(k => <option key={k} value={k}>{k}</option>)}
               </select>
             </div>
             <div className="flex-1">
-              <label className="block text-accent/70 mb-0.5">VALUE</label>
+              <label className="block text-accent/70 mb-0.5">值</label>
               <input type="password" className={inp} value={secretVal} onChange={e => setSecretVal(e.target.value)} />
             </div>
-            <button onClick={storeSecret} className="px-2 py-1 border border-positive text-positive hover:bg-positive/20 cursor-pointer">SAVE</button>
+            <button onClick={storeSecret} className="px-2 py-1 border border-positive text-positive hover:bg-positive/20 cursor-pointer">保存</button>
           </div>
           {secretMsg && <span className="text-xs text-accent">{secretMsg}</span>}
         </div>
@@ -401,7 +401,7 @@ export default function Config() {
 
       {/* API KEYS */}
       <div className="bb-panel">
-        <div className="bb-panel-header">API KEYS</div>
+        <div className="bb-panel-header">API 密钥</div>
         <div className="bb-panel-body space-y-2 text-xs">
           {apiKeys.length > 0 && (
             <div className="space-y-1">
@@ -411,14 +411,14 @@ export default function Config() {
                     <span className={k.is_active ? 'text-positive' : 'text-accent/30 line-through'}>{k.name}</span>
                     <span className="text-accent/40">{k.prefix}***</span>
                     <span className="text-accent/40">
-                      {k.expires_at ? `expires ${new Date(k.expires_at).toLocaleDateString()}` : 'no expiry'}
+                      {k.expires_at ? `过期于 ${new Date(k.expires_at).toLocaleDateString()}` : '永不过期'}
                     </span>
                   </div>
                   {k.is_active && (
                     <button onClick={async () => {
                       await api.deleteApiKey(k.id);
                       loadApiKeys();
-                    }} className="text-negative text-xs hover:text-red-400 cursor-pointer">REVOKE</button>
+                    }} className="text-negative text-xs hover:text-red-400 cursor-pointer">撤销</button>
                   )}
                 </div>
               ))}
@@ -426,22 +426,22 @@ export default function Config() {
           )}
           {createdKey && (
             <div className="border border-positive p-2 space-y-1">
-              <span className="text-positive">KEY CREATED (copy now, shown only once):</span>
+              <span className="text-positive">密钥已创建(请立即复制,仅显示一次):</span>
               <div className="flex gap-1">
                 <input readOnly className={inp} value={createdKey} />
-                <button onClick={() => { navigator.clipboard.writeText(createdKey); setApiKeyMsg('COPIED'); }}
-                  className="px-2 py-1 border border-accent text-accent hover:bg-accent/20 cursor-pointer shrink-0">COPY</button>
+                <button onClick={() => { navigator.clipboard.writeText(createdKey); setApiKeyMsg('已复制'); }}
+                  className="px-2 py-1 border border-accent text-accent hover:bg-accent/20 cursor-pointer shrink-0">复制</button>
               </div>
             </div>
           )}
           <div className="flex gap-2 items-end">
             <div className="flex-1">
-              <label className="block text-accent/70 mb-0.5">NAME</label>
+              <label className="block text-accent/70 mb-0.5">名称</label>
               <input className={inp} value={newKeyName} onChange={e => setNewKeyName(e.target.value)} placeholder="my-agent" />
             </div>
             <div className="w-32">
-              <label className="block text-accent/70 mb-0.5">EXPIRES (days)</label>
-              <input type="number" className={inp} value={newKeyExpiry} onChange={e => setNewKeyExpiry(e.target.value)} placeholder="empty=never" />
+              <label className="block text-accent/70 mb-0.5">有效天数</label>
+              <input type="number" className={inp} value={newKeyExpiry} onChange={e => setNewKeyExpiry(e.target.value)} placeholder="留空=永不" />
             </div>
             <button onClick={async () => {
               if (!newKeyName.trim()) return;
@@ -453,7 +453,7 @@ export default function Config() {
                 setApiKeyMsg('');
                 loadApiKeys();
               } catch (e: unknown) { setApiKeyMsg((e as Error).message); }
-            }} className="px-2 py-1 border border-positive text-positive hover:bg-positive/20 cursor-pointer">CREATE</button>
+            }} className="px-2 py-1 border border-positive text-positive hover:bg-positive/20 cursor-pointer">创建</button>
           </div>
           {apiKeyMsg && <span className="text-xs text-accent">{apiKeyMsg}</span>}
         </div>

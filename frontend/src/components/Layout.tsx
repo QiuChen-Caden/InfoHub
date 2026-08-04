@@ -6,12 +6,12 @@ import { setTimezone } from '../tz';
 import type { User } from '../types';
 
 const links = [
-  { to: '/', label: 'DASH', key: 'F1', num: 1 },
-  { to: '/news', label: 'NEWS', key: 'F2', num: 2 },
-  { to: '/runs', label: 'RUNS', key: 'F3', num: 3 },
-  { to: '/config', label: 'CONF', key: 'F4', num: 4 },
-  { to: '/usage', label: 'USAGE', key: 'F5', num: 5 },
-  { to: '/logs', label: 'LOGS', key: 'F6', num: 6 },
+  { to: '/', label: '概览', key: 'F1', num: 1 },
+  { to: '/news', label: '新闻', key: 'F2', num: 2 },
+  { to: '/runs', label: '运行', key: 'F3', num: 3 },
+  { to: '/config', label: '配置', key: 'F4', num: 4 },
+  { to: '/usage', label: '用量', key: 'F5', num: 5 },
+  { to: '/logs', label: '日志', key: 'F6', num: 6 },
 ];
 
 function Clock() {
@@ -83,7 +83,7 @@ export default function Layout() {
       <header className="bg-card border-b border-border flex items-center px-2 py-1 shrink-0">
         <div className="flex items-center gap-3">
           <span className="live-dot" />
-          <span className="text-accent font-bold text-sm tracking-wider">INFOHUB TERMINAL</span>
+          <span className="text-accent font-bold text-sm tracking-wider">INFOHUB 终端</span>
         </div>
 
         <nav className="flex items-center gap-1 ml-6">
@@ -107,7 +107,7 @@ export default function Layout() {
 
         <div className="ml-auto flex items-center gap-3">
           {user && <span className="text-accent/60 text-xs">{user.email}</span>}
-          <button onClick={logout} className="text-negative text-xs hover:text-red-400 cursor-pointer">LOGOUT</button>
+          <button onClick={logout} className="text-negative text-xs hover:text-red-400 cursor-pointer">退出</button>
           <Clock />
         </div>
       </header>
@@ -120,9 +120,9 @@ export default function Layout() {
       {/* Bottom status bar */}
       <footer className="bg-card border-t border-border px-2 py-0.5 flex items-center justify-between text-xs shrink-0">
         <span className="text-accent/50">INFOHUB v2.0</span>
-        <span className="text-accent/50">F1-F6 NAV | ESC CANCEL</span>
+        <span className="text-accent/50">F1-F6 导航 | ESC 取消</span>
         <span className={connected ? "text-positive" : "text-negative"}>
-          {connected ? "CONNECTED" : "DISCONNECTED"}
+          {connected ? "已连接" : "已断开"}
         </span>
       </footer>
     </div>

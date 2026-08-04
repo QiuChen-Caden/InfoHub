@@ -2,7 +2,8 @@ import { getToken, clearToken } from './auth';
 import type {
   NewsItem, RunItem, Stats, ConfigData, ConfigUpdateRequest,
   LoginRequest, RegisterRequest, TokenResponse, User, UsageData,
-  ApiKeyItem, CreateApiKeyResponse,
+  ApiKeyItem, CreateApiKeyResponse, AdminOverview, AdminTenant,
+  AdminTenantDetail, AdminTaskStatus,
 } from './types';
 
 const BASE = import.meta.env.VITE_API_BASE ?? '';
@@ -79,6 +80,21 @@ async function del<T>(path: string, options?: RequestOptions): Promise<T> {
   return res.json();
 }
 
+async function delBody<T>(path: string, body: unknown, options?: RequestOptions): Promise<T> {
+  const res = await fetch(`${BASE}${path}`, {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify(body),
+  });
+  handle401(res, options);
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.detail || `${res.status} ${res.statusText}`);
+  }
+  if (res.status === 204) return {} as T;
+  return res.json();
+}
+
 export const api = {
   // Auth (no JWT needed)
   login: (data: LoginRequest) =>
@@ -133,4 +149,29 @@ export const api = {
     post<CreateApiKeyResponse>('/api/v1/auth/api-keys', { name, expires_in_days }),
   deleteApiKey: (keyId: string) =>
     del<{ ok: boolean }>(`/api/v1/auth/api-keys/${encodeURIComponent(keyId)}`),
+
+  // Admin
+  adminOverview: () => get<AdminOverview>('/api/v1/admin/overview'),
+  adminTenants: () => get<AdminTenant[]>('/api/v1/admin/tenants'),
+  adminTasks: () => get<AdminTaskStatus>('/api/v1/admin/tasks'),
+  adminTenant: (tenantId: string) =>
+    get<AdminTenantDetail>(`/api/v1/admin/tenants/${encodeURIComponent(tenantId)}`),
+  adminUpdateTenantConfig: (tenantId: string, config: Record<string, unknown>) =>
+    put<AdminTenantDetail>(`/api/v1/admin/tenants/${encodeURIComponent(tenantId)}/config`, config),
+  adminSetTenantSecret: (tenantId: string, key_name: string, value: string) =>
+    post<{ ok: boolean }>(`/api/v1/admin/tenants/${encodeURIComponent(tenantId)}/secrets`, { key_name, value }),
+  adminDeleteTenantSecret: (tenantId: string, keyName: string) =>
+    del<{ ok: boolean }>(`/api/v1/admin/tenants/${encodeURIComponent(tenantId)}/secrets/${encodeURIComponent(keyName)}`),
+  adminSetTenantStatus: (tenantId: string, is_active: boolean) =>
+    put<AdminTenant>(`/api/v1/admin/tenants/${encodeURIComponent(tenantId)}/status`, { is_active }),
+  adminSetTenantRole: (tenantId: string, role: 'user' | 'admin') =>
+    put<AdminTenant>(`/api/v1/admin/tenants/${encodeURIComponent(tenantId)}/role`, { role }),
+  adminSetTenantPlan: (tenantId: string, plan: 'free' | 'pro' | 'enterprise') =>
+    put<AdminTenant>(`/api/v1/admin/tenants/${encodeURIComponent(tenantId)}/plan`, { plan }),
+  adminResetTenantPassword: (tenantId: string, password: string) =>
+    post<{ ok: boolean }>(`/api/v1/admin/tenants/${encodeURIComponent(tenantId)}/reset-password`, { password }),
+  adminClearTenantData: (tenantId: string, confirm: string) =>
+    delBody<{ ok: boolean }>(`/api/v1/admin/tenants/${encodeURIComponent(tenantId)}/data`, { confirm }),
+  adminDeleteTenant: (tenantId: string, confirm: string) =>
+    delBody<{ ok: boolean }>(`/api/v1/admin/tenants/${encodeURIComponent(tenantId)}`, { confirm }),
 };

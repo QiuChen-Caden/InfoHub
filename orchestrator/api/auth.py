@@ -67,6 +67,7 @@ class UserResponse(BaseModel):
     name: str
     email: str
     plan: str
+    role: str
     created_at: datetime
 
 
@@ -146,6 +147,15 @@ async def _get_current_tenant_jwt_only(
     return tenant
 
 
+async def get_current_admin_tenant(
+    tenant: Tenant = Depends(_get_current_tenant_jwt_only),
+) -> Tenant:
+    """仅允许管理员账号访问。"""
+    if (tenant.role or "user") != "admin":
+        raise HTTPException(status_code=403, detail="需要管理员权限")
+    return tenant
+
+
 @router.post("/register", response_model=TokenResponse)
 @limiter.limit("5/minute")
 async def register(request: Request, req: RegisterRequest, session: AsyncSession = Depends(get_session)):
@@ -161,6 +171,7 @@ async def register(request: Request, req: RegisterRequest, session: AsyncSession
         name=req.name,
         email=req.email,
         password_hash=pwd_context.hash(req.password),
+        role="user",
     )
     session.add(tenant)
     await session.flush()
@@ -214,6 +225,7 @@ async def me(tenant: Tenant = Depends(get_current_tenant)):
         name=tenant.name,
         email=tenant.email,
         plan=tenant.plan,
+        role=tenant.role or "user",
         created_at=tenant.created_at,
     )
 

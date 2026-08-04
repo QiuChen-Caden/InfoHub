@@ -5,3 +5,6 @@ __pycache__/
 nul
 node_modules/
 output/
+.token
+.claude/
+feeds.json

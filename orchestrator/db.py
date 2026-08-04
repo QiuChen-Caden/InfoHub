@@ -36,6 +36,13 @@ async def init_db():
         raise RuntimeError("DATABASE_URL 未设置，无法初始化数据库")
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        await conn.execute(text("ALTER TABLE tenants ADD COLUMN IF NOT EXISTS role VARCHAR(20) DEFAULT 'user'"))
+        bootstrap_email = os.environ.get("BOOTSTRAP_EMAIL", "")
+        if bootstrap_email:
+            await conn.execute(
+                text("UPDATE tenants SET role = 'admin' WHERE email = :email"),
+                {"email": bootstrap_email},
+            )
     log.info("数据库表初始化完成")
 
 

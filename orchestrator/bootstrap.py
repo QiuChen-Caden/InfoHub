@@ -55,6 +55,7 @@ async def bootstrap_from_yaml(session: AsyncSession):
         name="Admin",
         email=BOOTSTRAP_EMAIL,
         password_hash=pwd_context.hash(BOOTSTRAP_PASSWORD),
+        role="admin",
     )
     session.add(tenant)
     await session.flush()

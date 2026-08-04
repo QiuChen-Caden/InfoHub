@@ -24,6 +24,7 @@ from api.routes.runs import router as runs_router
 from api.routes.usage import router as usage_router
 from api.routes.secrets import router as secrets_router
 from api.routes.logs import router as logs_router
+from api.routes.admin import router as admin_router
 
 log = logging.getLogger("infohub.api")
 
@@ -117,6 +118,7 @@ app.include_router(runs_router, prefix="/api/v1/runs", tags=["runs"])
 app.include_router(usage_router, prefix="/api/v1/usage", tags=["usage"])
 app.include_router(secrets_router, prefix="/api/v1/secrets", tags=["secrets"])
 app.include_router(logs_router, prefix="/api/v1/logs", tags=["logs"])
+app.include_router(admin_router, prefix="/api/v1/admin", tags=["admin"])
 
 
 @app.get("/health")
