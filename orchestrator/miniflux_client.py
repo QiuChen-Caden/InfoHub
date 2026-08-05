@@ -7,6 +7,7 @@ import requests
 from typing import List, Optional
 
 from models import NewsItem
+from url_security import validate_public_http_url, validate_rsshub_route
 
 log = logging.getLogger("infohub.miniflux")
 
@@ -18,7 +19,12 @@ _ADMIN_PASS = os.environ.get("MINIFLUX_PASSWORD", "changeme123")
 
 
 def provision_miniflux_user(username: str, password: str) -> Optional[dict]:
-    """通过 admin API 为租户创建独立 Miniflux 用户，返回 {user_id, api_key}"""
+    """通过 admin API 为租户创建独立用户。
+
+    Miniflux 2.2.x 没有创建 API key 的 REST 路由，API key 只能在 Web
+    界面生成。因此优先使用 API key（兼容已有部署），否则返回租户用户
+    的 Basic Auth 凭据，由调用方加密保存。
+    """
     try:
         # 创建用户
         resp = requests.post(
@@ -38,18 +44,18 @@ def provision_miniflux_user(username: str, password: str) -> Optional[dict]:
             users_resp.raise_for_status()
             for u in users_resp.json():
                 if u["username"] == username:
-                    return _ensure_api_key(u["id"])
+                    return _ensure_api_key(u["id"], username, password)
             return None
         resp.raise_for_status()
         user = resp.json()
-        return _ensure_api_key(user["id"])
+        return _ensure_api_key(user["id"], username, password)
     except Exception as e:
         log.error(f"创建 Miniflux 用户失败: {e}")
         return None
 
 
-def _ensure_api_key(user_id: int) -> Optional[dict]:
-    """为用户创建 API key"""
+def _ensure_api_key(user_id: int, username: str, password: str) -> Optional[dict]:
+    """尝试创建 API key，Miniflux 版本不支持时回退到 Basic Auth。"""
     try:
         resp = requests.post(
             f"{_ADMIN_URL}/v1/users/{user_id}/api-keys",
@@ -57,22 +63,63 @@ def _ensure_api_key(user_id: int) -> Optional[dict]:
             json={"description": "infohub-auto"},
             timeout=15,
         )
+        if resp.ok:
+            key_data = resp.json()
+            api_key = key_data.get("api_key") or key_data.get("value")
+            if api_key:
+                return {"user_id": user_id, "api_key": api_key}
+        if resp.status_code == 404:
+            log.info("当前 Miniflux 版本不支持 REST API key，使用 Basic Auth")
+            return {
+                "user_id": user_id,
+                "username": username,
+                "password": password,
+            }
         resp.raise_for_status()
-        key_data = resp.json()
-        return {"user_id": user_id, "api_key": key_data["api_key"]}
+        return None
     except Exception as e:
         log.error(f"创建 Miniflux API key 失败: {e}")
         return None
 
 
+def delete_miniflux_user(username: str) -> bool:
+    """Delete the tenant's Miniflux user and all feed data."""
+    try:
+        users_resp = requests.get(
+            f"{_ADMIN_URL}/v1/users",
+            auth=(_ADMIN_USER, _ADMIN_PASS),
+            timeout=15,
+        )
+        users_resp.raise_for_status()
+        user = next((item for item in users_resp.json() if item.get("username") == username), None)
+        if not user:
+            return True
+        response = requests.delete(
+            f"{_ADMIN_URL}/v1/users/{user['id']}",
+            auth=(_ADMIN_USER, _ADMIN_PASS),
+            timeout=15,
+        )
+        response.raise_for_status()
+        log.info(f"Miniflux 用户已删除: {username}")
+        return True
+    except Exception as exc:
+        log.error(f"删除 Miniflux 用户失败 {username}: {exc}")
+        return False
+
+
 class MinifluxClient:
-    def __init__(self, base_url: str, api_key: str):
+    def __init__(self, base_url: str, api_key: str,
+                 username: str = "", password: str = ""):
         self.base_url = base_url.rstrip("/")
         self.headers = {"Content-Type": "application/json"}
         self._auth = None
         if api_key:
             self.headers["X-Auth-Token"] = api_key
             self._available = True
+        elif username and password:
+            self._auth = (username, password)
+            self._available = True
+            log.info("Miniflux: 使用租户 Basic Auth")
         elif os.environ.get("SINGLE_TENANT") == "true":
             # 仅限私有化单租户部署：回退到 admin basic auth
             admin_user = os.environ.get("MINIFLUX_ADMIN", "")
@@ -220,7 +267,12 @@ class MinifluxClient:
 
         # 注册 RSSHub 路由
         for feed in sources_config.get("rsshub_feeds", []):
-            url = f"{rsshub_url}{feed['route']}"
+            try:
+                route = validate_rsshub_route(feed["route"])
+            except Exception as e:
+                log.warning(f"拒绝不安全 RSSHub 路由 {feed.get('name', '')}: {e}")
+                continue
+            url = f"{rsshub_url}{route}"
             if url in existing_urls:
                 continue
             try:
@@ -235,8 +287,9 @@ class MinifluxClient:
             if feed["url"] in existing_urls:
                 continue
             try:
+                safe_url = validate_public_http_url(feed["url"])
                 cat_id = self.ensure_category(feed.get("category", "默认"))
-                self.create_feed(feed["url"], cat_id)
-                log.info(f"注册订阅: {feed['name']} -> {feed['url']}")
+                self.create_feed(safe_url, cat_id)
+                log.info(f"注册订阅: {feed['name']} -> {safe_url}")
             except Exception as e:
                 log.warning(f"注册失败 {feed['name']}: {e}")

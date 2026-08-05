@@ -20,9 +20,10 @@ from slowapi import Limiter
 from slowapi.util import get_remote_address
 
 from db import get_session
-from models_db import Tenant, TenantConfig, TenantSecret, ApiKey
+from models_db import Tenant, TenantConfig, TenantSecret, ApiKey, QuotaToken
 from crypto import encrypt
-from miniflux_client import provision_miniflux_user
+from miniflux_client import delete_miniflux_user, provision_miniflux_user
+from config_loader import DEFAULT_PLATFORMS
 
 log = logging.getLogger("infohub.auth")
 
@@ -44,6 +45,8 @@ if SECRET_KEY in _INSECURE_SECRETS:
         "请通过环境变量设置一个安全的随机密钥（至少 32 字符）。"
         "生成方法: python -c \"import secrets; print(secrets.token_hex(32))\""
     )
+if len(SECRET_KEY) < 32:
+    raise RuntimeError("JWT_SECRET 长度必须至少为 32 个字符")
 
 
 class RegisterRequest(BaseModel):
@@ -71,10 +74,20 @@ class UserResponse(BaseModel):
     created_at: datetime
 
 
-def _create_token(tenant_id: UUID) -> str:
+class RedeemQuotaTokenRequest(BaseModel):
+    token: str = Field(..., min_length=20, max_length=160)
+
+
+class RedeemQuotaTokenResponse(BaseModel):
+    ok: bool = True
+    plan: str
+    limits: dict[str, int]
+
+
+def _create_token(tenant_id: UUID, auth_version: int = 1) -> str:
     expire = datetime.now(timezone.utc) + timedelta(hours=ACCESS_TOKEN_EXPIRE_HOURS)
     return jwt.encode(
-        {"sub": str(tenant_id), "exp": expire},
+        {"sub": str(tenant_id), "ver": auth_version, "exp": expire},
         SECRET_KEY, algorithm=ALGORITHM,
     )
 
@@ -118,12 +131,13 @@ async def get_current_tenant(
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         tenant_id = UUID(payload["sub"])
+        token_version = int(payload.get("ver", 1))
     except (jwt.InvalidTokenError, KeyError, ValueError) as e:
         log.warning(f"JWT 验证失败: {type(e).__name__}")
         raise HTTPException(status_code=401, detail="无效的认证令牌")
 
     tenant = await session.get(Tenant, tenant_id)
-    if not tenant or not tenant.is_active:
+    if not tenant or not tenant.is_active or (tenant.auth_version or 1) != token_version:
         raise HTTPException(status_code=401, detail="账户不存在或已禁用")
     return tenant
 
@@ -139,10 +153,11 @@ async def _get_current_tenant_jwt_only(
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         tenant_id = UUID(payload["sub"])
+        token_version = int(payload.get("ver", 1))
     except (jwt.InvalidTokenError, KeyError, ValueError):
         raise HTTPException(status_code=401, detail="无效的认证令牌")
     tenant = await session.get(Tenant, tenant_id)
-    if not tenant or not tenant.is_active:
+    if not tenant or not tenant.is_active or (tenant.auth_version or 1) != token_version:
         raise HTTPException(status_code=401, detail="账户不存在或已禁用")
     return tenant
 
@@ -159,8 +174,9 @@ async def get_current_admin_tenant(
 @router.post("/register", response_model=TokenResponse)
 @limiter.limit("5/minute")
 async def register(request: Request, req: RegisterRequest, session: AsyncSession = Depends(get_session)):
+    email = str(req.email).strip().lower()
     existing = await session.execute(
-        select(Tenant).where(Tenant.email == req.email)
+        select(Tenant).where(func.lower(Tenant.email) == email)
     )
     if existing.scalar_one_or_none():
         raise HTTPException(status_code=409, detail="邮箱已注册")
@@ -169,14 +185,17 @@ async def register(request: Request, req: RegisterRequest, session: AsyncSession
     tenant = Tenant(
         id=tenant_id,
         name=req.name,
-        email=req.email,
+        email=email,
         password_hash=pwd_context.hash(req.password),
         role="user",
     )
     session.add(tenant)
     await session.flush()
 
-    session.add(TenantConfig(tenant_id=tenant_id))
+    session.add(TenantConfig(
+        tenant_id=tenant_id,
+        platforms=list(DEFAULT_PLATFORMS),
+    ))
 
     # 为租户创建独立 Miniflux 用户（在线程池中执行同步HTTP调用）
     import asyncio
@@ -184,26 +203,43 @@ async def register(request: Request, req: RegisterRequest, session: AsyncSession
     mx_password = uuid.uuid4().hex
     try:
         mx_result = await asyncio.to_thread(provision_miniflux_user, mx_username, mx_password)
-        if mx_result and mx_result.get("api_key"):
+        if not mx_result or not mx_result.get("user_id"):
+            raise RuntimeError("Miniflux 租户用户创建失败")
+        if mx_result.get("api_key"):
             session.add(TenantSecret(
                 tenant_id=tenant_id,
                 key_name="miniflux_api_key",
                 encrypted_value=encrypt(mx_result["api_key"]),
             ))
+        else:
+            session.add(TenantSecret(
+                tenant_id=tenant_id,
+                key_name="miniflux_username",
+                encrypted_value=encrypt(mx_result["username"]),
+            ))
+            session.add(TenantSecret(
+                tenant_id=tenant_id,
+                key_name="miniflux_password",
+                encrypted_value=encrypt(mx_result["password"]),
+            ))
     except Exception as e:
-        log.warning(f"Miniflux 用户创建失败，跳过: {e}")
+        await session.rollback()
+        await asyncio.to_thread(delete_miniflux_user, mx_username)
+        log.error(f"Miniflux 用户创建失败，注册回滚: {e}")
+        raise HTTPException(status_code=503, detail="RSS 租户资源创建失败，请稍后重试") from e
 
     await session.commit()
 
-    log.info(f"新用户注册: tenant={tenant_id} email={req.email}")
-    return TokenResponse(access_token=_create_token(tenant_id))
+    log.info(f"新用户注册: tenant={tenant_id} email={email}")
+    return TokenResponse(access_token=_create_token(tenant_id, tenant.auth_version or 1))
 
 
 @router.post("/login", response_model=TokenResponse)
 @limiter.limit("10/minute")
 async def login(request: Request, req: LoginRequest, session: AsyncSession = Depends(get_session)):
+    email = str(req.email).strip().lower()
     result = await session.execute(
-        select(Tenant).where(Tenant.email == req.email)
+        select(Tenant).where(func.lower(Tenant.email) == email)
     )
     tenant = result.scalar_one_or_none()
     # 防止时序侧信道：无论用户是否存在都执行 bcrypt verify
@@ -211,11 +247,11 @@ async def login(request: Request, req: LoginRequest, session: AsyncSession = Dep
     if not tenant or not password_ok:
         raise HTTPException(status_code=401, detail="邮箱或密码错误")
     if not tenant.is_active:
-        log.warning(f"禁用账户登录尝试: {req.email}")
+        log.warning(f"禁用账户登录尝试: {email}")
         raise HTTPException(status_code=403, detail="账户已禁用")
 
-    log.info(f"用户登录: tenant={tenant.id} email={req.email}")
-    return TokenResponse(access_token=_create_token(tenant.id))
+    log.info(f"用户登录: tenant={tenant.id} email={email}")
+    return TokenResponse(access_token=_create_token(tenant.id, tenant.auth_version or 1))
 
 
 @router.get("/me", response_model=UserResponse)
@@ -228,6 +264,44 @@ async def me(tenant: Tenant = Depends(get_current_tenant)):
         role=tenant.role or "user",
         created_at=tenant.created_at,
     )
+
+
+@router.post("/redeem-quota-token", response_model=RedeemQuotaTokenResponse)
+async def redeem_quota_token(
+    req: RedeemQuotaTokenRequest,
+    tenant: Tenant = Depends(_get_current_tenant_jwt_only),
+    session: AsyncSession = Depends(get_session),
+):
+    token_hash = hashlib.sha256(req.token.strip().encode()).hexdigest()
+    result = await session.execute(
+        select(QuotaToken)
+        .where(QuotaToken.token_hash == token_hash)
+        .with_for_update()
+    )
+    quota_token = result.scalar_one_or_none()
+    now = datetime.now(timezone.utc)
+    if (
+        not quota_token
+        or not quota_token.is_active
+        or quota_token.redeemed_by is not None
+        or (quota_token.expires_at and quota_token.expires_at <= now)
+    ):
+        raise HTTPException(status_code=400, detail="额度令牌无效、已使用或已过期")
+
+    limits = {
+        str(key): int(value)
+        for key, value in (quota_token.quota_limits or {}).items()
+    }
+    tenant.plan = quota_token.plan
+    tenant.quota_limits = limits
+    quota_token.redeemed_by = tenant.id
+    quota_token.redeemed_at = now
+    quota_token.is_active = False
+    await session.commit()
+    log.info(
+        f"额度令牌兑换: tenant={tenant.id} token={quota_token.prefix} plan={quota_token.plan}"
+    )
+    return RedeemQuotaTokenResponse(plan=quota_token.plan, limits=limits)
 
 
 # ---- API Key 管理 ----

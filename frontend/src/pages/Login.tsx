@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router';
 import { api } from '../api';
 import { setToken } from '../auth';
+import ThemeToggle from '../components/ThemeToggle';
 
 export default function Login() {
   const [mode, setMode] = useState<'login' | 'register'>('login');
@@ -30,7 +31,7 @@ export default function Login() {
     }
   };
 
-  const inp = 'w-full bg-black border border-border text-accent text-xs px-3 py-2 focus:border-accent focus:outline-none';
+  const inp = 'w-full bg-card border border-border text-text text-xs px-3 py-2 focus:border-accent focus:outline-none';
 
   return (
     <div className="flex items-center justify-center h-screen bg-bg">
@@ -38,7 +39,10 @@ export default function Login() {
         <div className="bb-panel">
           <div className="bb-panel-header flex items-center justify-between">
             <span>{mode === 'login' ? '登录' : '注册'}</span>
-            <span className="text-accent/40 text-[9px] font-normal">INFOHUB 终端</span>
+            <div className="flex items-center gap-2">
+              <ThemeToggle />
+              <span className="text-accent/40 text-[9px] font-normal">INFOHUB 终端</span>
+            </div>
           </div>
           <div className="bb-panel-body">
             <form onSubmit={submit} className="space-y-3">

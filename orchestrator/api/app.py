@@ -91,6 +91,15 @@ async def request_logging_middleware(request: Request, call_next):
     log.info(
         f"{client_ip} {request.method} {request.url.path} {response.status_code} {duration_ms:.0f}ms"
     )
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+    response.headers["Content-Security-Policy"] = (
+        "default-src 'self'; script-src 'self' 'unsafe-inline'; "
+        "style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; "
+        "connect-src 'self'; frame-ancestors 'none'; base-uri 'self'"
+    )
     return response
 
 

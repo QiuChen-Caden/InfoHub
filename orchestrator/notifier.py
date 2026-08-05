@@ -10,6 +10,7 @@ from typing import List, Tuple
 from datetime import datetime
 
 from models import NewsItem
+from url_security import validate_public_http_url
 
 log = logging.getLogger("infohub.notify")
 
@@ -22,7 +23,15 @@ def _post_with_retry(url: str, json_data: dict, timeout: int = 30,
     """POST 请求，带重试和响应校验，返回是否成功"""
     for attempt in range(MAX_RETRIES + 1):
         try:
-            resp = requests.post(url, json=json_data, timeout=timeout)
+            safe_url = validate_public_http_url(url)
+            resp = requests.post(
+                safe_url,
+                json=json_data,
+                timeout=timeout,
+                allow_redirects=False,
+            )
+            if 300 <= resp.status_code < 400:
+                raise ValueError("通知地址不允许重定向")
             resp.raise_for_status()
             return True
         except Exception as e:
@@ -40,23 +49,23 @@ class Notifier:
         self.batch_interval = config.get("batch_interval", 2)
 
     def send(self, items: List[NewsItem], now: datetime,
-             summary: str = "") -> Tuple[int, int]:
-        """发送到所有已配置渠道，返回 (成功数, 失败数)"""
+             summary: str = "") -> Tuple[List[str], List[str]]:
+        """发送到所有已配置渠道，返回 (成功渠道, 失败渠道)。"""
         message = self._format_message(items, now, summary=summary)
-        success, fail = 0, 0
+        successful, failed = [], []
 
         channels = [
-            ("telegram_bot_token", self._send_telegram),
-            ("feishu_webhook_url", self._send_feishu),
-            ("dingtalk_webhook_url", self._send_dingtalk),
-            ("email_from", self._send_email),
-            ("slack_webhook_url", self._send_slack),
+            ("telegram_bot_token", "telegram", self._send_telegram),
+            ("feishu_webhook_url", "feishu", self._send_feishu),
+            ("dingtalk_webhook_url", "dingtalk", self._send_dingtalk),
+            ("email_from", "email", self._send_email),
+            ("slack_webhook_url", "slack", self._send_slack),
         ]
 
-        active = [key for key, _ in channels if self.config.get(key)]
+        active = [key for key, _, _ in channels if self.config.get(key)]
         log.info(f"通知发送: {len(items)} 条 → {len(active)} 个渠道")
 
-        for key, sender in channels:
+        for key, name, sender in channels:
             if not self.config.get(key):
                 continue
             try:
@@ -65,14 +74,14 @@ class Notifier:
                 else:
                     ok = sender(message)
                 if ok:
-                    success += 1
+                    successful.append(name)
                 else:
-                    fail += 1
+                    failed.append(name)
             except Exception as e:
                 log.error(f"通知渠道异常 {key}: {e}")
-                fail += 1
+                failed.append(name)
 
-        return success, fail
+        return successful, failed
 
     def get_active_channels(self) -> List[str]:
         """返回已配置的通知渠道名称列表"""
@@ -164,6 +173,7 @@ class Notifier:
 
         smtp_server = self._detect_smtp(self.config["email_from"])
         try:
+            validate_public_http_url(f"https://{smtp_server}")
             with smtplib.SMTP_SSL(smtp_server, 465) as server:
                 server.login(self.config["email_from"],
                              self.config["email_password"])

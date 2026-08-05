@@ -10,6 +10,7 @@ from typing import List, Dict
 from collections import Counter
 
 from models import NewsItem
+from url_security import UnsafeUrlError, validate_http_url_syntax
 
 log = logging.getLogger("infohub.export")
 
@@ -177,7 +178,11 @@ class HTMLExporter:
                 score_pct = f'{it.score:.0%}' if it.score else '—'
                 title_safe = escape(it.title)
                 source_safe = escape(it.source)
-                url_safe = escape(it.url) if it.url else ""
+                try:
+                    safe_url = validate_http_url_syntax(it.url) if it.url else ""
+                except UnsafeUrlError:
+                    safe_url = ""
+                url_safe = escape(safe_url) if safe_url else ""
                 link = (f'<a href="{url_safe}" target="_blank" '
                         f'rel="noopener">{title_safe}</a>'
                         if url_safe else title_safe)

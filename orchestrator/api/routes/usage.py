@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from db import get_session
 from models_db import Tenant, TenantConfig
 from api.auth import get_current_tenant
-from metering import get_usage_summary, FREE_LIMITS
+from metering import get_usage_summary, get_tenant_limits
 
 log = logging.getLogger("infohub.usage")
 router = APIRouter()
@@ -29,7 +29,8 @@ async def usage(
 ):
     tz_name = await _get_tenant_tz(session, tenant.id)
     summary = await get_usage_summary(session, tenant.id, tz_name=tz_name)
-    return {"plan": tenant.plan, "usage": summary, "limits": FREE_LIMITS}
+    limits = await get_tenant_limits(session, tenant.id)
+    return {"plan": tenant.plan, "usage": summary, "limits": limits}
 
 
 @router.get("/billing")
@@ -39,9 +40,8 @@ async def billing(
 ):
     tz_name = await _get_tenant_tz(session, tenant.id)
     summary = await get_usage_summary(session, tenant.id, tz_name=tz_name)
-    total_overage = sum(v.get("overage_cost_cents", 0) for v in summary.values())
     return {
         "plan": tenant.plan,
-        "total_overage_cost_cents": total_overage,
+        "total_overage_cost_cents": 0,
         "breakdown": summary,
     }

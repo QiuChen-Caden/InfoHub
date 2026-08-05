@@ -6,6 +6,11 @@ WORKERS="${UVICORN_WORKERS:-2}"
 CONCURRENCY="${CELERY_CONCURRENCY:-4}"
 MAX_TASKS="${CELERY_MAX_TASKS_PER_CHILD:-100}"
 
+if [ -n "${DATABASE_URL:-}" ]; then
+  echo "[entrypoint] 应用数据库迁移..."
+  alembic -c /app/alembic.ini upgrade head
+fi
+
 case "$MODE" in
   api)
     echo "[entrypoint] 启动 FastAPI API 服务..."

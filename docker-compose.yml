@@ -80,6 +80,29 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  redis-rsshub:
+    image: redis:7-alpine
+    restart: unless-stopped
+    networks:
+      - data
+    command: redis-server --requirepass ${REDIS_RSSHUB_PASSWORD:?REDIS_RSSHUB_PASSWORD must be set} --appendonly yes
+    volumes:
+      - redis_rsshub_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_RSSHUB_PASSWORD}", "ping"]
+      interval: 10s
+      start_period: 10s
+    stop_grace_period: 15s
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
   # ---- 数据源层 ----
   rsshub:
     image: diygod/rsshub:2025-01-13
@@ -92,11 +115,11 @@ services:
       CACHE_TYPE: redis
       CACHE_EXPIRE: 1800
       CACHE_CONTENT_EXPIRE: 7200
-      REDIS_URL: "redis://:${REDIS_PASSWORD:-redis_secret}@redis:6379/"
+      REDIS_URL: "redis://:${REDIS_RSSHUB_PASSWORD:?}@redis-rsshub:6379/0"
       REQUEST_RETRY: 3
       REQUEST_TIMEOUT: 10000
     depends_on:
-      redis:
+      redis-rsshub:
         condition: service_healthy
     deploy:
       resources:
@@ -128,8 +151,8 @@ services:
       WORKER_POOL_SIZE: 8
       CLEANUP_ARCHIVE_READ_DAYS: 30
       CLEANUP_ARCHIVE_UNREAD_DAYS: 90
-      FETCH_ALLOW_PRIVATE_NETWORKS: 1
-      FETCHER_ALLOW_PRIVATE_NETWORKS: 1
+      FETCH_ALLOW_PRIVATE_NETWORKS: 0
+      FETCHER_ALLOW_PRIVATE_NETWORKS: 0
     depends_on:
       postgres-miniflux:
         condition: service_healthy
@@ -174,6 +197,9 @@ services:
       OUTPUT_DIR: /app/output
       BOOTSTRAP_EMAIL: ${BOOTSTRAP_EMAIL:-}
       BOOTSTRAP_PASSWORD: ${BOOTSTRAP_PASSWORD:-}
+      ENVIRONMENT: ${ENVIRONMENT:-production}
+      CORS_ORIGINS: ${CORS_ORIGINS:-}
+      RSSHUB_ALLOWED_PREFIXES: ${RSSHUB_ALLOWED_PREFIXES:-}
     volumes:
       - ./config:/app/config:ro
       - ./output:/app/output
@@ -217,6 +243,7 @@ services:
       RSSHUB_URL: "http://rsshub:1200"
       OUTPUT_DIR: /app/output
       SINGLE_TENANT: ${SINGLE_TENANT:-}
+      RSSHUB_ALLOWED_PREFIXES: ${RSSHUB_ALLOWED_PREFIXES:-}
     volumes:
       - ./output:/app/output
     depends_on:
@@ -282,3 +309,4 @@ volumes:
   postgres_data:
   postgres_miniflux_data:
   redis_data:
+  redis_rsshub_data:

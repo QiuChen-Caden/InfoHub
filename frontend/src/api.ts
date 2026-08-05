@@ -3,7 +3,8 @@ import type {
   NewsItem, RunItem, Stats, ConfigData, ConfigUpdateRequest,
   LoginRequest, RegisterRequest, TokenResponse, User, UsageData,
   ApiKeyItem, CreateApiKeyResponse, AdminOverview, AdminTenant,
-  AdminTenantDetail, AdminTaskStatus,
+  AdminTenantDetail, AdminTaskStatus, AdminQuotaToken,
+  AdminQuotaTokenCreateResponse, RedeemQuotaTokenResponse,
 } from './types';
 
 const BASE = import.meta.env.VITE_API_BASE ?? '';
@@ -102,6 +103,8 @@ export const api = {
   register: (data: RegisterRequest) =>
     post<TokenResponse>('/api/v1/auth/register', data, { redirectOn401: false }),
   me: () => get<User>('/api/v1/auth/me'),
+  redeemQuotaToken: (token: string) =>
+    post<RedeemQuotaTokenResponse>('/api/v1/auth/redeem-quota-token', { token }),
 
   // News
   newsStats: () => get<Stats>('/api/v1/news/stats'),
@@ -154,6 +157,17 @@ export const api = {
   adminOverview: () => get<AdminOverview>('/api/v1/admin/overview'),
   adminTenants: () => get<AdminTenant[]>('/api/v1/admin/tenants'),
   adminTasks: () => get<AdminTaskStatus>('/api/v1/admin/tasks'),
+  adminQuotaTokens: () => get<AdminQuotaToken[]>('/api/v1/admin/quota-tokens'),
+  adminCreateQuotaTokens: (
+    plan: string,
+    limits: Record<string, number>,
+    count: number,
+    expires_in_days?: number,
+  ) => post<AdminQuotaTokenCreateResponse>('/api/v1/admin/quota-tokens', {
+    plan, limits, count, expires_in_days,
+  }),
+  adminRevokeQuotaToken: (tokenId: string) =>
+    del<{ ok: boolean }>(`/api/v1/admin/quota-tokens/${encodeURIComponent(tokenId)}`),
   adminTenant: (tenantId: string) =>
     get<AdminTenantDetail>(`/api/v1/admin/tenants/${encodeURIComponent(tenantId)}`),
   adminUpdateTenantConfig: (tenantId: string, config: Record<string, unknown>) =>

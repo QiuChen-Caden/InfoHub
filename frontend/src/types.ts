@@ -46,6 +46,7 @@ export interface AdminTenant {
   news_count: number;
   run_count: number;
   latest_run: string | null;
+  quota_limits: Record<string, number>;
 }
 
 export interface AdminRun {
@@ -74,6 +75,31 @@ export interface AdminTenantDetail {
   config: Record<string, unknown>;
   stored_secret_keys: string[];
   recent_runs: AdminRun[];
+}
+
+export interface AdminQuotaToken {
+  id: string;
+  prefix: string;
+  plan: string;
+  limits: Record<string, number>;
+  expires_at: string | null;
+  redeemed_by: string | null;
+  redeemed_at: string | null;
+  created_at: string | null;
+  is_active: boolean;
+}
+
+export interface AdminQuotaTokenCreateResponse {
+  tokens: string[];
+  plan: string;
+  limits: Record<string, number>;
+  expires_at: string | null;
+}
+
+export interface RedeemQuotaTokenResponse {
+  ok: boolean;
+  plan: string;
+  limits: Record<string, number>;
 }
 
 export interface UsageData {

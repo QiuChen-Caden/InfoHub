@@ -52,7 +52,7 @@ export default function News() {
     setOffset(0);
   };
 
-  const inputCls = "bg-black border border-border px-2 py-1 text-xs text-accent";
+  const inputCls = "bg-card border border-border px-2 py-1 text-xs text-text";
 
   return (
     <div className="space-y-2">

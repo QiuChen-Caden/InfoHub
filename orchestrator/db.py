@@ -1,6 +1,7 @@
 """PostgreSQL 异步数据层 — 多租户隔离"""
 
 import os
+import asyncio
 import logging
 from datetime import datetime, timezone
 from typing import List, Optional
@@ -11,7 +12,7 @@ from sqlalchemy import select, update, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from models import NewsItem
-from models_db import Base, News, RunHistory, UsageRecord
+from models_db import News, RunHistory, UsageRecord
 
 log = logging.getLogger("infohub.db")
 
@@ -31,19 +32,22 @@ else:
 
 
 async def init_db():
-    """创建所有表（开发用，生产用 Alembic）"""
+    """Apply versioned database migrations."""
     if not engine:
         raise RuntimeError("DATABASE_URL 未设置，无法初始化数据库")
+    from alembic import command
+    from alembic.config import Config
+
+    alembic_config = Config(os.path.join(os.path.dirname(__file__), "alembic.ini"))
+    await asyncio.to_thread(command.upgrade, alembic_config, "head")
     async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-        await conn.execute(text("ALTER TABLE tenants ADD COLUMN IF NOT EXISTS role VARCHAR(20) DEFAULT 'user'"))
         bootstrap_email = os.environ.get("BOOTSTRAP_EMAIL", "")
         if bootstrap_email:
             await conn.execute(
                 text("UPDATE tenants SET role = 'admin' WHERE email = :email"),
                 {"email": bootstrap_email},
             )
-    log.info("数据库表初始化完成")
+    log.info("数据库迁移完成")
 
 
 async def get_session() -> AsyncSession:

@@ -4,6 +4,7 @@ import { api } from '../api';
 import { clearToken } from '../auth';
 import { setTimezone } from '../tz';
 import type { User } from '../types';
+import ThemeToggle from './ThemeToggle';
 
 const links = [
   { to: '/', label: '概览', key: 'F1', num: 1 },
@@ -107,6 +108,7 @@ export default function Layout() {
 
         <div className="ml-auto flex items-center gap-3">
           {user && <span className="text-accent/60 text-xs">{user.email}</span>}
+          <ThemeToggle />
           <button onClick={logout} className="text-negative text-xs hover:text-red-400 cursor-pointer">退出</button>
           <Clock />
         </div>

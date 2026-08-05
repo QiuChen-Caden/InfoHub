@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { api } from '../api';
 import { clearToken } from '../auth';
 import type { User } from '../types';
+import ThemeToggle from './ThemeToggle';
 
 export default function AdminLayout() {
   const navigate = useNavigate();
@@ -43,6 +44,7 @@ export default function AdminLayout() {
               <span className="text-accent/60 text-xs">{user.email}</span>
             </>
           )}
+          <ThemeToggle />
           <button onClick={logout} className="text-negative text-xs hover:text-red-400 cursor-pointer">退出</button>
         </div>
       </header>

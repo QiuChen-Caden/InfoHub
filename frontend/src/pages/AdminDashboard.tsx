@@ -3,7 +3,8 @@ import { api } from '../api';
 import StatCard from '../components/StatCard';
 import { formatTime } from '../tz';
 import type {
-  AdminOverview, AdminRun, AdminTaskStatus, AdminTenant, AdminTenantDetail, User,
+  AdminOverview, AdminQuotaToken, AdminRun, AdminTaskStatus,
+  AdminTenant, AdminTenantDetail, User,
 } from '../types';
 
 type Role = 'user' | 'admin';
@@ -16,9 +17,20 @@ const ADMIN_SECRET_KEYS = [
   'email_to', 'slack_webhook_url',
 ];
 
-const selectClass = 'bg-black border border-border text-accent text-xs px-2 py-1 focus:border-accent focus:outline-none';
-const inputClass = 'bg-black border border-border text-accent text-xs px-2 py-1 focus:border-accent focus:outline-none';
-const textareaClass = 'bg-black border border-border text-accent text-xs px-2 py-1 focus:border-accent focus:outline-none font-mono';
+const DEFAULT_TOKEN_LIMITS = {
+  ai_filter: 5000,
+  ai_summary: 500,
+  ai_translate: 1000,
+  push_telegram: 2000,
+  push_feishu: 2000,
+  push_dingtalk: 2000,
+  push_email: 2000,
+  push_slack: 2000,
+};
+
+const selectClass = 'bg-card border border-border text-text text-xs px-2 py-1 focus:border-accent focus:outline-none';
+const inputClass = 'bg-card border border-border text-text text-xs px-2 py-1 focus:border-accent focus:outline-none';
+const textareaClass = 'bg-card border border-border text-text text-xs px-2 py-1 focus:border-accent focus:outline-none font-mono';
 const primaryButton = 'px-2 py-1 bg-accent text-black text-xs font-bold hover:bg-accent/80 disabled:opacity-50 disabled:cursor-not-allowed';
 const secondaryButton = 'px-2 py-1 border border-border text-accent/70 text-xs hover:text-accent hover:border-accent disabled:opacity-50 disabled:cursor-not-allowed';
 const dangerButton = 'px-2 py-1 border border-negative text-negative text-xs hover:bg-negative/20 disabled:opacity-50 disabled:cursor-not-allowed';
@@ -101,6 +113,12 @@ export default function AdminDashboard() {
   const [configText, setConfigText] = useState('{}');
   const [secretKey, setSecretKey] = useState(ADMIN_SECRET_KEYS[0]);
   const [secretValue, setSecretValue] = useState('');
+  const [quotaTokens, setQuotaTokens] = useState<AdminQuotaToken[]>([]);
+  const [tokenPlan, setTokenPlan] = useState('custom');
+  const [tokenLimits, setTokenLimits] = useState(JSON.stringify(DEFAULT_TOKEN_LIMITS, null, 2));
+  const [tokenCount, setTokenCount] = useState('1');
+  const [tokenExpiry, setTokenExpiry] = useState('365');
+  const [generatedTokens, setGeneratedTokens] = useState<string[]>([]);
 
   const selectedTenant = useMemo(
     () => tenants.find(tenant => tenant.id === selectedId) || null,
@@ -110,12 +128,15 @@ export default function AdminDashboard() {
 
   const loadAll = useCallback(() => {
     setError('');
-    Promise.all([api.me(), api.adminOverview(), api.adminTasks(), api.adminTenants()])
-      .then(([me, overviewData, taskData, tenantRows]) => {
+    Promise.all([
+      api.me(), api.adminOverview(), api.adminTasks(), api.adminTenants(), api.adminQuotaTokens(),
+    ])
+      .then(([me, overviewData, taskData, tenantRows, tokenRows]) => {
         setCurrentUser(me);
         setOverview(overviewData);
         setTasks(taskData);
         setTenants(tenantRows);
+        setQuotaTokens(tokenRows);
         setSelectedId(prev => (
           prev && tenantRows.some(tenant => tenant.id === prev)
             ? prev
@@ -223,6 +244,28 @@ export default function AdminDashboard() {
     }
   };
 
+  const generateQuotaTokens = async () => {
+    setBusy(true);
+    setError('');
+    setNotice('');
+    try {
+      const limits = JSON.parse(tokenLimits) as Record<string, number>;
+      const result = await api.adminCreateQuotaTokens(
+        tokenPlan.trim() || 'custom',
+        limits,
+        Number(tokenCount) || 1,
+        tokenExpiry ? Number(tokenExpiry) : undefined,
+      );
+      setGeneratedTokens(result.tokens);
+      setNotice(`已生成 ${result.tokens.length} 个额度令牌`);
+      loadAll();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const deleteTenantSecret = async (keyName: string) => {
     if (!detail) return;
     setBusy(true);
@@ -270,6 +313,73 @@ export default function AdminDashboard() {
           {error ? `错误: ${error}` : notice}
         </div>
       )}
+
+      <div className="bb-panel shrink-0">
+        <div className="bb-panel-header flex items-center justify-between">
+          <span>额度令牌</span>
+          <span className="text-accent/40 text-[9px] font-normal tracking-normal">
+            {quotaTokens.filter(token => token.is_active).length} 个可用
+          </span>
+        </div>
+        <div className="bb-panel-body grid grid-cols-[180px_90px_110px_1fr_auto] gap-2 items-end text-xs">
+          <label>
+            <span className="block text-accent/50 mb-1">套餐标识</span>
+            <input className={`${inputClass} w-full`} value={tokenPlan} onChange={e => setTokenPlan(e.target.value)} />
+          </label>
+          <label>
+            <span className="block text-accent/50 mb-1">数量</span>
+            <input type="number" min="1" max="100" className={`${inputClass} w-full`} value={tokenCount} onChange={e => setTokenCount(e.target.value)} />
+          </label>
+          <label>
+            <span className="block text-accent/50 mb-1">有效天数</span>
+            <input type="number" min="1" className={`${inputClass} w-full`} value={tokenExpiry} onChange={e => setTokenExpiry(e.target.value)} />
+          </label>
+          <label>
+            <span className="block text-accent/50 mb-1">月度额度 JSON</span>
+            <input className={`${inputClass} w-full font-mono`} value={tokenLimits.replace(/\s+/g, ' ')} onChange={e => setTokenLimits(e.target.value)} />
+          </label>
+          <button className={primaryButton} disabled={busy} onClick={generateQuotaTokens}>生成</button>
+        </div>
+        {(generatedTokens.length > 0 || quotaTokens.length > 0) && (
+          <div className="bb-panel-body border-t border-border grid grid-cols-2 gap-3 text-xs">
+            <div className="space-y-1">
+              {generatedTokens.length > 0 && (
+                <>
+                  <div className="flex items-center justify-between text-positive">
+                    <span>新令牌仅显示一次</span>
+                    <button className={secondaryButton} onClick={() => navigator.clipboard.writeText(generatedTokens.join('\n'))}>复制全部</button>
+                  </div>
+                  {generatedTokens.map(token => <div key={token} className="font-mono text-accent break-all">{token}</div>)}
+                </>
+              )}
+            </div>
+            <div className="max-h-24 overflow-y-auto space-y-1">
+              {quotaTokens.slice(0, 20).map(token => (
+                <div key={token.id} className="flex items-center gap-2 border-b border-border/30 py-0.5">
+                  <span className="font-mono text-accent/70">{token.prefix}...</span>
+                  <span>{token.plan}</span>
+                  <span
+                    className="max-w-[220px] truncate text-accent/50"
+                    title={JSON.stringify(token.limits)}
+                  >
+                    {Object.entries(token.limits).map(([key, value]) => `${key}:${value}`).join(' ')}
+                  </span>
+                  <span className={token.redeemed_by ? 'text-accent/40' : token.is_active ? 'text-positive' : 'text-negative'}>
+                    {token.redeemed_by ? '已兑换' : token.is_active ? '可用' : '已撤销'}
+                  </span>
+                  <span className="flex-1" />
+                  {token.is_active && !token.redeemed_by && (
+                    <button
+                      className="text-negative"
+                      onClick={() => runAction(() => api.adminRevokeQuotaToken(token.id), '令牌已撤销')}
+                    >撤销</button>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
 
       <div className="grid grid-cols-2 gap-2 min-h-[320px]">
         <div className="bb-panel flex flex-col min-h-0">

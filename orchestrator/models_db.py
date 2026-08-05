@@ -23,6 +23,8 @@ class Tenant(Base):
     email = Column(String(255), unique=True, nullable=False)
     password_hash = Column(String(255), nullable=False)
     plan = Column(String(20), default="free")
+    quota_limits = Column(JSONB, default=dict)
+    auth_version = Column(Integer, default=1, nullable=False)
     role = Column(String(20), default="user")
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     is_active = Column(Boolean, default=True)
@@ -122,3 +124,38 @@ class ApiKey(Base):
     is_active = Column(Boolean, default=True)
 
     tenant = relationship("Tenant", back_populates="api_keys")
+
+
+class QuotaToken(Base):
+    __tablename__ = "quota_tokens"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    token_hash = Column(String(64), unique=True, nullable=False, index=True)
+    prefix = Column(String(16), nullable=False)
+    plan = Column(String(20), nullable=False, default="custom")
+    quota_limits = Column(JSONB, nullable=False, default=dict)
+    expires_at = Column(DateTime(timezone=True), nullable=True)
+    redeemed_by = Column(UUID(as_uuid=True), ForeignKey("tenants.id"), nullable=True, index=True)
+    redeemed_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    is_active = Column(Boolean, default=True)
+
+
+class NotificationOutbox(Base):
+    __tablename__ = "notification_outbox"
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    tenant_id = Column(UUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False, index=True)
+    run_id = Column(BigInteger, nullable=False)
+    channel = Column(String(30), nullable=False)
+    payload = Column(JSONB, nullable=False)
+    status = Column(String(20), nullable=False, default="pending", index=True)
+    attempts = Column(Integer, nullable=False, default=0)
+    last_error = Column(Text, default="")
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+    sent_at = Column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "run_id", "channel", name="uq_outbox_tenant_run_channel"),
+    )

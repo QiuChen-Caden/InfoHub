@@ -1,13 +1,15 @@
 """运行管理 API"""
 
 import logging
+from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, text, update
 
 from db import get_session, Database
-from models_db import Tenant
+from models_db import Tenant, RunHistory
 from api.auth import get_current_tenant
 
 log = logging.getLogger("infohub.runs")
@@ -58,6 +60,35 @@ async def trigger_run(
     session: AsyncSession = Depends(get_session),
 ):
     """手动触发一次运行 — 先在 DB 创建 RunHistory 行，再提交 Celery 任务"""
+    # Serialize the active-run check and insert for this tenant. The Redis
+    # worker lock is a second line of defense after the request is accepted.
+    await session.execute(
+        text("SELECT pg_advisory_xact_lock(hashtext(:lock_key))"),
+        {"lock_key": f"manual-run:{tenant.id}"},
+    )
+    stale_before = datetime.now(timezone.utc) - timedelta(minutes=20)
+    await session.execute(
+        update(RunHistory)
+        .where(
+            RunHistory.tenant_id == tenant.id,
+            RunHistory.finished_at.is_(None),
+            RunHistory.started_at < stale_before,
+        )
+        .values(
+            finished_at=datetime.now(timezone.utc),
+            errors="任务超时，已自动结束",
+        )
+    )
+    active_run = await session.scalar(
+        select(RunHistory.id)
+        .where(
+            RunHistory.tenant_id == tenant.id,
+            RunHistory.finished_at.is_(None),
+        )
+        .limit(1)
+    )
+    if active_run:
+        raise HTTPException(status_code=409, detail=f"已有运行中的任务 #{active_run}")
     db = Database(session, tenant.id)
     run_id = await db.start_run()
     await session.commit()

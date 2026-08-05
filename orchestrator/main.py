@@ -19,13 +19,14 @@ from config_loader import load_tenant_config
 from hotlist import fetch_all_hotlists
 from miniflux_client import MinifluxClient
 from ai_processor import AIProcessor
-from notifier import Notifier
 from exporter import HTMLExporter, ObsidianExporter
 from dedup import deduplicate
 from db import Database
 from metering import record_usage, check_quota
 from log_stream import stream_logs_to_redis
 from tz import get_tz
+from models_db import Tenant
+from delivery import CHANNEL_KEYS, create_outbox_records, deliver_outbox
 
 logging.basicConfig(
     level=logging.INFO,
@@ -50,7 +51,12 @@ async def run(session: AsyncSession, tenant_id: UUID, run_id: int = None):
     with stream_logs_to_redis(tenant_id, run_id, tz_name=config.get("timezone")):
         try:
             # ---- 0. Miniflux 客户端 + 自动注册源 ----
-            mx = MinifluxClient(config["miniflux_url"], config["miniflux_api_key"])
+            mx = MinifluxClient(
+                config["miniflux_url"],
+                config["miniflux_api_key"],
+                config.get("miniflux_username", ""),
+                config.get("miniflux_password", ""),
+            )
             if config.get("sources"):
                 try:
                     mx.register_sources(config["sources"], config["rsshub_url"])
@@ -68,7 +74,10 @@ async def run(session: AsyncSession, tenant_id: UUID, run_id: int = None):
 
             # ---- 2. 拉取 Miniflux RSS ----
             rss_items = mx.fetch_unread_entries(limit=200)
-            if not rss_items and config.get("miniflux_api_key"):
+            if not rss_items and (
+                config.get("miniflux_api_key")
+                or config.get("miniflux_username")
+            ):
                 log.warning(f"[{tenant_id}] RSS 拉取返回空，可能连接失败")
                 errors.append("RSS 拉取返回空")
             else:
@@ -93,7 +102,10 @@ async def run(session: AsyncSession, tenant_id: UUID, run_id: int = None):
             # ---- 4. AI 筛选（带配额检查）----
             ai = AIProcessor(config.get("ai", {}))
             matched = []
-            if await check_quota(session, tenant_id, "ai_filter", requested=len(new_items), tz_name=config.get("timezone")):
+            ai_enabled = bool(config.get("ai", {}).get("api_key"))
+            if not ai_enabled:
+                matched = ai.filter_by_interest(new_items, config.get("interests", []))
+            elif await check_quota(session, tenant_id, "ai_filter", requested=len(new_items), tz_name=config.get("timezone")):
                 matched = ai.filter_by_interest(new_items, config.get("interests", []))
                 await record_usage(session, tenant_id, "ai_filter", count=len(new_items), tz_name=config.get("timezone"))
             else:
@@ -116,7 +128,7 @@ async def run(session: AsyncSession, tenant_id: UUID, run_id: int = None):
 
             # ---- 6. AI 摘要 ----
             summary = ""
-            if matched and config.get("ai", {}).get("summary_enabled", True):
+            if matched and ai_enabled and config.get("ai", {}).get("summary_enabled", True):
                 if await check_quota(session, tenant_id, "ai_summary", tz_name=config.get("timezone")):
                     summary = ai.generate_summaries(matched)
                     await record_usage(session, tenant_id, "ai_summary", tz_name=config.get("timezone"))
@@ -131,20 +143,38 @@ async def run(session: AsyncSession, tenant_id: UUID, run_id: int = None):
             # ---- 8. 输出 ----
             pushed_count = 0
             if matched:
-                notifier = Notifier(config.get("notification", {}))
-                success, fail = notifier.send(matched, now, summary=summary)
-                if success > 0 and fail == 0:
-                    await db.mark_pushed([it.id for it in matched])
+                current_tenant = await session.get(Tenant, tenant_id)
+                if not current_tenant or not current_tenant.is_active:
+                    raise RuntimeError("租户已被禁用，停止输出和推送")
+                notification = dict(config.get("notification", {}))
+                channels = [
+                    channel for channel, key in CHANNEL_KEYS.items()
+                    if notification.get(key)
+                ]
+                outbox_ids = await create_outbox_records(
+                    session,
+                    tenant_id,
+                    run_id,
+                    channels,
+                    matched,
+                    now,
+                    summary,
+                )
+                # Persist news and outbox before any external side effect.
+                await session.commit()
+
+                delivery_results = [
+                    await deliver_outbox(session, outbox_id, config=config)
+                    for outbox_id in outbox_ids
+                ]
+                successful_count = sum(1 for ok, _ in delivery_results if ok)
+                failed_messages = [message for ok, message in delivery_results if not ok]
+                if successful_count:
                     pushed_count = len(matched)
-                    for channel in notifier.get_active_channels():
-                        await record_usage(session, tenant_id, f"push_{channel}", tz_name=config.get("timezone"))
-                    log.info(f"[{tenant_id}] 推送成功: {success} 个渠道")
-                elif success > 0 and fail > 0:
-                    errors.append(f"推送部分失败: {success} 成功, {fail} 失败")
-                    log.warning(f"[{tenant_id}] 推送部分失败")
-                elif fail > 0:
-                    errors.append(f"推送全部失败: {fail} 个渠道")
-                    log.error(f"[{tenant_id}] 推送全部失败")
+                    log.info(f"[{tenant_id}] 推送成功: {successful_count} 个渠道")
+                if failed_messages:
+                    errors.extend(failed_messages)
+                    log.warning(f"[{tenant_id}] {len(failed_messages)} 个通知进入重试队列")
 
                 # HTML 报告
                 html_exp = HTMLExporter(config["output_dir"], config.get("tenant_id", ""))
@@ -179,6 +209,7 @@ async def run(session: AsyncSession, tenant_id: UUID, run_id: int = None):
             errors.append(f"管道异常: {e}")
             try:
                 await db.finish_run(run_id, errors="; ".join(errors))
+                await session.commit()
             except Exception:
                 log.exception(f"[{tenant_id}] finish_run 也失败了")
             raise

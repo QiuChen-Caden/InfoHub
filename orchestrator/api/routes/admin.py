@@ -1,6 +1,12 @@
 """管理员 API — 跨租户总览、账号操作和全局任务视图。"""
 
-from datetime import datetime, timezone
+import hashlib
+import asyncio
+import os
+import secrets
+import shutil
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Optional
 from uuid import UUID
 
@@ -9,11 +15,17 @@ from passlib.context import CryptContext
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+import redis.asyncio as aioredis
 
 from api.auth import get_current_admin_tenant
 from db import get_session
-from models_db import ApiKey, News, RunHistory, Tenant, TenantConfig, TenantSecret, UsageRecord
-from crypto import encrypt
+from models_db import (
+    ApiKey, News, NotificationOutbox, QuotaToken, RunHistory, Tenant, TenantConfig,
+    TenantSecret, UsageRecord,
+)
+from metering import FREE_LIMITS
+from secret_store import ALLOWED_SECRET_KEYS, extract_config_secrets, upsert_secret
+from url_security import UnsafeUrlError, validate_public_http_url
 
 router = APIRouter()
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -26,12 +38,7 @@ SECRET_FIELDS = {
     "feishu_webhook_url", "dingtalk_webhook_url", "email_password",
     "slack_webhook_url", "miniflux_api_key",
 }
-ADMIN_SECRET_KEYS = {
-    "ai_api_key", "ai_api_base", "miniflux_api_key",
-    "telegram_bot_token", "telegram_chat_id", "feishu_webhook_url",
-    "dingtalk_webhook_url", "email_from", "email_password",
-    "email_to", "slack_webhook_url",
-}
+ADMIN_SECRET_KEYS = ALLOWED_SECRET_KEYS
 
 
 class AdminOverview(BaseModel):
@@ -56,6 +63,7 @@ class AdminTenantResponse(BaseModel):
     news_count: int
     run_count: int
     latest_run: Optional[str] = None
+    quota_limits: dict[str, int]
 
 
 class AdminRunResponse(BaseModel):
@@ -133,10 +141,75 @@ class AdminConfigUpdate(BaseModel):
                 raise ValueError(f"无效的时区: {value}")
         return value
 
+    @field_validator("external_feeds")
+    @classmethod
+    def validate_external_feeds(cls, value):
+        if value is None:
+            return value
+        if len(value) > 100:
+            raise ValueError("外部订阅不能超过 100 个")
+        from url_security import validate_http_url_syntax
+        for feed in value:
+            if not isinstance(feed, dict):
+                raise ValueError("外部订阅格式无效")
+            feed["url"] = validate_http_url_syntax(feed.get("url", ""))
+        return value
+
+    @field_validator("rsshub_feeds")
+    @classmethod
+    def validate_rsshub_feeds(cls, value):
+        if value is None:
+            return value
+        if len(value) > 100:
+            raise ValueError("RSSHub 订阅不能超过 100 个")
+        from url_security import validate_rsshub_route
+        for feed in value:
+            if not isinstance(feed, dict):
+                raise ValueError("RSSHub 订阅格式无效")
+            feed["route"] = validate_rsshub_route(str(feed.get("route", "")))
+        return value
+
 
 class AdminSecretUpdate(BaseModel):
     key_name: str
     value: str = Field(..., min_length=1, max_length=2048)
+
+
+class AdminQuotaTokenCreate(BaseModel):
+    plan: str = Field("custom", min_length=1, max_length=20)
+    limits: dict[str, int] = Field(default_factory=dict)
+    expires_in_days: Optional[int] = Field(None, ge=1, le=3650)
+    count: int = Field(1, ge=1, le=100)
+
+    @field_validator("limits")
+    @classmethod
+    def validate_limits(cls, value):
+        unknown = set(value) - set(FREE_LIMITS)
+        if unknown:
+            raise ValueError(f"不支持的额度项: {', '.join(sorted(unknown))}")
+        for key, amount in value.items():
+            if not isinstance(amount, int) or isinstance(amount, bool) or amount < 0 or amount > 10_000_000:
+                raise ValueError(f"额度 {key} 必须是 0 到 10000000 的整数")
+        return value
+
+
+class AdminQuotaTokenResponse(BaseModel):
+    id: str
+    prefix: str
+    plan: str
+    limits: dict[str, int]
+    expires_at: Optional[str] = None
+    redeemed_by: Optional[str] = None
+    redeemed_at: Optional[str] = None
+    created_at: Optional[str] = None
+    is_active: bool
+
+
+class AdminQuotaTokenCreateResponse(BaseModel):
+    tokens: list[str]
+    plan: str
+    limits: dict[str, int]
+    expires_at: Optional[str] = None
 
 
 def _iso(value: Optional[datetime]) -> Optional[str]:
@@ -186,6 +259,7 @@ def _tenant_response(tenant: Tenant, news_count=0, run_count=0, latest_run=None)
         news_count=int(news_count or 0),
         run_count=int(run_count or 0),
         latest_run=_iso(latest_run),
+        quota_limits={str(k): int(v) for k, v in (tenant.quota_limits or {}).items()},
     )
 
 
@@ -251,6 +325,70 @@ async def _stored_secret_keys(session: AsyncSession, tenant_id: UUID) -> list[st
         .order_by(TenantSecret.key_name)
     )
     return [row[0] for row in result.all()]
+
+
+async def _ensure_no_active_run(session: AsyncSession, tenant_id: UUID) -> None:
+    stale_before = datetime.now(timezone.utc) - timedelta(minutes=20)
+    from sqlalchemy import update
+    await session.execute(
+        update(RunHistory)
+        .where(
+            RunHistory.tenant_id == tenant_id,
+            RunHistory.finished_at.is_(None),
+            RunHistory.started_at < stale_before,
+        )
+        .values(
+            finished_at=datetime.now(timezone.utc),
+            errors="任务超时，已自动结束",
+        )
+    )
+    active_run = await session.scalar(
+        select(RunHistory.id)
+        .where(
+            RunHistory.tenant_id == tenant_id,
+            RunHistory.finished_at.is_(None),
+        )
+        .limit(1)
+    )
+    if active_run:
+        raise HTTPException(status_code=409, detail=f"租户任务 #{active_run} 仍在运行")
+
+
+def _remove_tenant_tree(base_dir: Path, tenant_id: UUID) -> None:
+    base = base_dir.resolve(strict=False)
+    target = (base / str(tenant_id)).resolve(strict=False)
+    try:
+        target.relative_to(base)
+    except ValueError as exc:
+        raise RuntimeError("租户数据目录越界") from exc
+    if target.is_dir():
+        shutil.rmtree(target)
+
+
+async def _cleanup_tenant_artifacts(tenant_id: UUID) -> None:
+    output_dir = Path(os.environ.get("OUTPUT_DIR", "/app/output")) / "html"
+    await asyncio.to_thread(_remove_tenant_tree, output_dir, tenant_id)
+
+    obsidian_dir = os.environ.get("OBSIDIAN_VAULT_PATH", "")
+    if obsidian_dir:
+        await asyncio.to_thread(_remove_tenant_tree, Path(obsidian_dir), tenant_id)
+
+    redis_url = os.environ.get("REDIS_URL", "")
+    if redis_url:
+        client = aioredis.from_url(redis_url)
+        try:
+            await client.delete(f"log_history:{tenant_id}", f"pipeline_lock:{tenant_id}")
+        finally:
+            await client.aclose()
+
+
+async def _delete_tenant_external_data(tenant_id: UUID) -> None:
+    from miniflux_client import delete_miniflux_user
+
+    username = f"tenant_{tenant_id.hex[:12]}"
+    if not await asyncio.to_thread(delete_miniflux_user, username):
+        raise HTTPException(status_code=502, detail="Miniflux 租户数据删除失败")
+    await _cleanup_tenant_artifacts(tenant_id)
 
 
 @router.get("/overview", response_model=AdminOverview)
@@ -411,6 +549,18 @@ async def update_tenant_config(
         updates["notification"] = _merge_preserving_masked(updates["notification"], config.notification)
     if "ai_config" in updates:
         updates["ai_config"] = _merge_preserving_masked(updates["ai_config"], config.ai_config)
+    if "notification" in updates or "ai_config" in updates:
+        try:
+            notification, ai_config = await extract_config_secrets(
+                session,
+                tenant.id,
+                updates.pop("notification", config.notification),
+                updates.pop("ai_config", config.ai_config),
+            )
+        except UnsafeUrlError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        config.notification = notification
+        config.ai_config = ai_config
     for field, value in updates.items():
         setattr(config, field, value)
     await session.commit()
@@ -427,15 +577,83 @@ async def set_tenant_secret(
     tenant = await _get_target_tenant(session, tenant_id)
     if body.key_name not in ADMIN_SECRET_KEYS:
         raise HTTPException(status_code=400, detail=f"不支持的密钥名: {body.key_name}")
-    secret = await session.get(TenantSecret, {"tenant_id": tenant.id, "key_name": body.key_name})
-    if secret:
-        secret.encrypted_value = encrypt(body.value)
-    else:
-        session.add(TenantSecret(
-            tenant_id=tenant.id,
-            key_name=body.key_name,
-            encrypted_value=encrypt(body.value),
+    if body.key_name in {"ai_api_base", "feishu_webhook_url", "dingtalk_webhook_url", "slack_webhook_url"}:
+        try:
+            validate_public_http_url(body.value)
+        except UnsafeUrlError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+    await upsert_secret(session, tenant.id, body.key_name, body.value)
+    await session.commit()
+    return {"ok": True}
+
+
+@router.post("/quota-tokens", response_model=AdminQuotaTokenCreateResponse)
+async def create_quota_tokens(
+    body: AdminQuotaTokenCreate,
+    _admin: Tenant = Depends(get_current_admin_tenant),
+    session: AsyncSession = Depends(get_session),
+):
+    limits = {**FREE_LIMITS, **body.limits}
+    expires_at = (
+        datetime.now(timezone.utc) + timedelta(days=body.expires_in_days)
+        if body.expires_in_days else None
+    )
+    raw_tokens = []
+    for _ in range(body.count):
+        raw_token = "ihq_" + secrets.token_urlsafe(32)
+        raw_tokens.append(raw_token)
+        session.add(QuotaToken(
+            token_hash=hashlib.sha256(raw_token.encode()).hexdigest(),
+            prefix=raw_token[:12],
+            plan=body.plan,
+            quota_limits=limits,
+            expires_at=expires_at,
         ))
+    await session.commit()
+    return AdminQuotaTokenCreateResponse(
+        tokens=raw_tokens,
+        plan=body.plan,
+        limits=limits,
+        expires_at=_iso(expires_at),
+    )
+
+
+@router.get("/quota-tokens", response_model=list[AdminQuotaTokenResponse])
+async def list_quota_tokens(
+    _admin: Tenant = Depends(get_current_admin_tenant),
+    session: AsyncSession = Depends(get_session),
+):
+    result = await session.execute(
+        select(QuotaToken).order_by(QuotaToken.created_at.desc()).limit(200)
+    )
+    return [
+        AdminQuotaTokenResponse(
+            id=str(token.id),
+            prefix=token.prefix,
+            plan=token.plan,
+            limits={str(k): int(v) for k, v in (token.quota_limits or {}).items()},
+            expires_at=_iso(token.expires_at),
+            redeemed_by=str(token.redeemed_by) if token.redeemed_by else None,
+            redeemed_at=_iso(token.redeemed_at),
+            created_at=_iso(token.created_at),
+            is_active=bool(token.is_active),
+        )
+        for token in result.scalars().all()
+    ]
+
+
+@router.delete("/quota-tokens/{token_id}")
+async def revoke_quota_token(
+    token_id: UUID,
+    _admin: Tenant = Depends(get_current_admin_tenant),
+    session: AsyncSession = Depends(get_session),
+):
+    token = await session.get(QuotaToken, token_id)
+    if not token:
+        raise HTTPException(status_code=404, detail="额度令牌不存在")
+    if token.redeemed_by:
+        raise HTTPException(status_code=409, detail="已兑换的额度令牌不能撤销")
+    token.is_active = False
     await session.commit()
     return {"ok": True}
 
@@ -528,6 +746,7 @@ async def reset_tenant_password(
 ):
     tenant = await _get_target_tenant(session, tenant_id)
     tenant.password_hash = pwd_context.hash(body.password)
+    tenant.auth_version = (tenant.auth_version or 1) + 1
     await session.commit()
     return {"ok": True}
 
@@ -542,7 +761,10 @@ async def clear_tenant_data(
     tenant = await _get_target_tenant(session, tenant_id)
     if body.confirm != tenant.email:
         raise HTTPException(status_code=400, detail="确认文本必须等于租户邮箱")
+    await _ensure_no_active_run(session, tenant.id)
+    await _cleanup_tenant_artifacts(tenant.id)
     await session.execute(delete(UsageRecord).where(UsageRecord.tenant_id == tenant.id))
+    await session.execute(delete(NotificationOutbox).where(NotificationOutbox.tenant_id == tenant.id))
     await session.execute(delete(News).where(News.tenant_id == tenant.id))
     await session.execute(delete(RunHistory).where(RunHistory.tenant_id == tenant.id))
     await session.commit()
@@ -563,7 +785,11 @@ async def delete_tenant(
         raise HTTPException(status_code=400, detail="确认文本必须等于租户邮箱")
     if (tenant.role or "user") == "admin" and await _count_admins(session) <= 1:
         raise HTTPException(status_code=400, detail="不能删除最后一个管理员")
+    await _ensure_no_active_run(session, tenant.id)
+    await _delete_tenant_external_data(tenant.id)
     await session.execute(delete(ApiKey).where(ApiKey.tenant_id == tenant.id))
+    await session.execute(delete(QuotaToken).where(QuotaToken.redeemed_by == tenant.id))
+    await session.execute(delete(NotificationOutbox).where(NotificationOutbox.tenant_id == tenant.id))
     await session.execute(delete(TenantSecret).where(TenantSecret.tenant_id == tenant.id))
     await session.execute(delete(TenantConfig).where(TenantConfig.tenant_id == tenant.id))
     await session.execute(delete(UsageRecord).where(UsageRecord.tenant_id == tenant.id))

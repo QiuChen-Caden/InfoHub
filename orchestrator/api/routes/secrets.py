@@ -10,15 +10,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from db import get_session
 from models_db import Tenant, TenantSecret
 from api.auth import get_current_tenant
-from crypto import encrypt
+from secret_store import ALLOWED_SECRET_KEYS, URL_SECRET_KEYS, upsert_secret
+from url_security import UnsafeUrlError, validate_public_http_url
 
 log = logging.getLogger("infohub.secrets")
 router = APIRouter()
 
-ALLOWED_KEYS = {
-    "ai_api_key", "ai_api_base",
-    "miniflux_api_key",
-}
+ALLOWED_KEYS = ALLOWED_SECRET_KEYS
 
 
 class SecretCreate(BaseModel):
@@ -34,22 +32,12 @@ async def store_secret(
 ):
     if body.key_name not in ALLOWED_KEYS:
         raise HTTPException(400, f"不支持的密钥名: {body.key_name}")
-
-    existing = await session.execute(
-        select(TenantSecret).where(
-            TenantSecret.tenant_id == tenant.id,
-            TenantSecret.key_name == body.key_name,
-        )
-    )
-    secret = existing.scalar_one_or_none()
-    if secret:
-        secret.encrypted_value = encrypt(body.value)
-    else:
-        session.add(TenantSecret(
-            tenant_id=tenant.id,
-            key_name=body.key_name,
-            encrypted_value=encrypt(body.value),
-        ))
+    if body.key_name in URL_SECRET_KEYS:
+        try:
+            validate_public_http_url(body.value)
+        except UnsafeUrlError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+    await upsert_secret(session, tenant.id, body.key_name, body.value)
     await session.commit()
     log.info(f"密钥存储: tenant={tenant.id} key={body.key_name}")
     return {"ok": True}

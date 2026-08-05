@@ -10,6 +10,7 @@ from litellm import completion
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
 from models import NewsItem
+from url_security import validate_public_http_url
 
 log = logging.getLogger("infohub.ai")
 
@@ -38,6 +39,8 @@ class AIProcessor:
     def _call_llm(self, system_prompt: str, user_prompt: str) -> str:
         """统一 LLM 调用，带重试"""
         t0 = time.time()
+        if self.api_base:
+            validate_public_http_url(self.api_base)
         resp = completion(
             model=self.model,
             api_key=self.api_key,

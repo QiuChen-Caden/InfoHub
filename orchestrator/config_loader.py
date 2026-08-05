@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from models_db import TenantConfig, TenantSecret
 from crypto import decrypt
+from secret_store import migrate_plaintext_config_secrets
 
 log = logging.getLogger("infohub.config")
 
@@ -49,6 +50,10 @@ async def load_tenant_config(session: AsyncSession, tenant_id: UUID) -> dict:
         log.warning(f"租户 {tenant_id} 无配置，使用默认值")
         return _build_default_config(secrets, tenant_id)
 
+    await migrate_plaintext_config_secrets(session, tc)
+    # 迁移过程可能新增密钥，重新加载后再构建运行配置。
+    secrets = await _load_secrets(session, tenant_id)
+
     # 合并 AI 配置
     ai = {**DEFAULT_AI}
     if tc.ai_config:
@@ -60,7 +65,7 @@ async def load_tenant_config(session: AsyncSession, tenant_id: UUID) -> dict:
         ai["api_base"] = secrets["ai_api_base"]
 
     # 合并通知配置 + secrets
-    notification = tc.notification or {}
+    notification = dict(tc.notification or {})
     for key in ("telegram_bot_token", "telegram_chat_id", "feishu_webhook_url",
                 "dingtalk_webhook_url", "email_from", "email_password",
                 "email_to", "slack_webhook_url"):
@@ -69,13 +74,16 @@ async def load_tenant_config(session: AsyncSession, tenant_id: UUID) -> dict:
 
     config = {
         "timezone": tc.timezone or "Asia/Shanghai",
-        "platforms": tc.platforms or DEFAULT_PLATFORMS,
+        "platforms": tc.platforms if tc.platforms is not None else DEFAULT_PLATFORMS,
         "interests": tc.interests or [],
         "miniflux_url": os.environ.get("MINIFLUX_URL", "http://miniflux:8080"),
         "miniflux_api_key": secrets.get(
             "miniflux_api_key",
-            os.environ.get("MINIFLUX_API_KEY", ""),
+            os.environ.get("MINIFLUX_API_KEY", "")
+            if os.environ.get("SINGLE_TENANT") == "true" else "",
         ),
+        "miniflux_username": secrets.get("miniflux_username", ""),
+        "miniflux_password": secrets.get("miniflux_password", ""),
         "rsshub_url": os.environ.get("RSSHUB_URL", "http://rsshub:1200"),
         "sources": {
             "rsshub_feeds": tc.rsshub_feeds or [],
@@ -85,8 +93,9 @@ async def load_tenant_config(session: AsyncSession, tenant_id: UUID) -> dict:
         "notification": notification,
         "output_dir": os.environ.get("OUTPUT_DIR", "/app/output"),
         "tenant_id": str(tenant_id),
-        "obsidian_vault_path": os.environ.get("OBSIDIAN_VAULT_PATH", "")
-                               if tc.obsidian_export else "",
+        "obsidian_vault_path": str(
+            Path(os.environ["OBSIDIAN_VAULT_PATH"]) / str(tenant_id)
+        ) if tc.obsidian_export and os.environ.get("OBSIDIAN_VAULT_PATH") else "",
         "cron_schedule": tc.cron_schedule or "*/30 * * * *",
     }
 
@@ -124,8 +133,11 @@ def _build_default_config(secrets: dict, tenant_id: UUID = None) -> dict:
         "miniflux_url": os.environ.get("MINIFLUX_URL", "http://miniflux:8080"),
         "miniflux_api_key": secrets.get(
             "miniflux_api_key",
-            os.environ.get("MINIFLUX_API_KEY", ""),
+            os.environ.get("MINIFLUX_API_KEY", "")
+            if os.environ.get("SINGLE_TENANT") == "true" else "",
         ),
+        "miniflux_username": secrets.get("miniflux_username", ""),
+        "miniflux_password": secrets.get("miniflux_password", ""),
         "rsshub_url": os.environ.get("RSSHUB_URL", "http://rsshub:1200"),
         "sources": {"rsshub_feeds": [], "external_feeds": []},
         "ai": ai,

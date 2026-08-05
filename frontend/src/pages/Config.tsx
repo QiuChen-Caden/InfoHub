@@ -30,6 +30,9 @@ const TIMEZONE_PRESETS = [
 const ALLOWED_SECRET_KEYS = [
   'ai_api_key', 'ai_api_base',
   'miniflux_api_key',
+  'telegram_bot_token', 'telegram_chat_id', 'feishu_webhook_url',
+  'dingtalk_webhook_url', 'email_from', 'email_password',
+  'email_to', 'slack_webhook_url',
 ];
 
 function deepClone<T>(obj: T): T {
@@ -79,6 +82,10 @@ export default function Config() {
   const [newKeyExpiry, setNewKeyExpiry] = useState('');
   const [createdKey, setCreatedKey] = useState('');
   const [apiKeyMsg, setApiKeyMsg] = useState('');
+
+  // Quota token state
+  const [quotaToken, setQuotaToken] = useState('');
+  const [quotaMsg, setQuotaMsg] = useState('');
 
   const load = useCallback(() => {
     api.config().then((cfg) => {
@@ -179,7 +186,19 @@ export default function Config() {
     } catch (e: unknown) { setSecretMsg((e as Error).message); }
   };
 
-  const inp = "bg-black border border-border text-accent text-xs px-2 py-1 w-full focus:border-accent focus:outline-none";
+  const redeemQuotaToken = async () => {
+    const token = quotaToken.trim();
+    if (!token) return;
+    try {
+      const result = await api.redeemQuotaToken(token);
+      setQuotaToken('');
+      setQuotaMsg(`令牌已兑换: ${result.plan}`);
+    } catch (e: unknown) {
+      setQuotaMsg((e as Error).message);
+    }
+  };
+
+  const inp = "bg-card border border-border text-text text-xs px-2 py-1 w-full focus:border-accent focus:outline-none";
   const lbl = "text-accent/70 text-xs w-32 shrink-0";
   const ai = form.ai_config as Record<string, unknown> ?? {};
   const notif = form.notification as Record<string, unknown> ?? {};
@@ -201,6 +220,30 @@ export default function Config() {
             className="px-3 py-1 bg-accent text-black text-xs font-bold hover:bg-accent/80 disabled:opacity-30 cursor-pointer">
             {saving ? '保存中...' : '[ 保存配置 ]'}
           </button>
+        </div>
+      </div>
+
+      {/* QUOTA TOKEN */}
+      <div className="bb-panel">
+        <div className="bb-panel-header">额度令牌</div>
+        <div className="bb-panel-body text-xs space-y-1">
+          <div className="flex gap-2">
+            <input
+              type="password"
+              className={inp}
+              value={quotaToken}
+              onChange={e => setQuotaToken(e.target.value)}
+              placeholder="ihq_..."
+            />
+            <button
+              onClick={redeemQuotaToken}
+              disabled={!quotaToken.trim()}
+              className="px-3 py-1 border border-positive text-positive hover:bg-positive/20 disabled:opacity-30 cursor-pointer shrink-0"
+            >
+              兑换
+            </button>
+          </div>
+          {quotaMsg && <span className="text-accent">{quotaMsg}</span>}
         </div>
       </div>
 

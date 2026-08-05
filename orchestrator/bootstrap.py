@@ -1,5 +1,6 @@
 """私有化部署引导 — 从 YAML 配置自动创建首个租户"""
 
+import asyncio
 import os
 import uuid
 import time
@@ -11,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from models_db import Tenant, TenantConfig, TenantSecret
 from config_loader import load_config_from_yaml
 from crypto import encrypt
-from miniflux_client import provision_miniflux_user
+from miniflux_client import delete_miniflux_user, provision_miniflux_user
 
 log = logging.getLogger("infohub.bootstrap")
 
@@ -53,7 +54,7 @@ async def bootstrap_from_yaml(session: AsyncSession):
     tenant = Tenant(
         id=tenant_id,
         name="Admin",
-        email=BOOTSTRAP_EMAIL,
+        email=BOOTSTRAP_EMAIL.strip().lower(),
         password_hash=pwd_context.hash(BOOTSTRAP_PASSWORD),
         role="admin",
     )
@@ -106,12 +107,29 @@ async def bootstrap_from_yaml(session: AsyncSession):
     # 创建 Miniflux 用户
     mx_username = f"tenant_{tenant_id.hex[:12]}"
     mx_password = uuid.uuid4().hex
-    mx_result = provision_miniflux_user(mx_username, mx_password)
-    if mx_result and mx_result.get("api_key"):
+    mx_result = await asyncio.to_thread(
+        provision_miniflux_user, mx_username, mx_password
+    )
+    if not mx_result or not mx_result.get("user_id"):
+        await session.rollback()
+        await asyncio.to_thread(delete_miniflux_user, mx_username)
+        raise RuntimeError("Miniflux 租户资源创建失败，引导已回滚")
+    if mx_result.get("api_key"):
         session.add(TenantSecret(
             tenant_id=tenant_id,
             key_name="miniflux_api_key",
             encrypted_value=encrypt(mx_result["api_key"]),
+        ))
+    else:
+        session.add(TenantSecret(
+            tenant_id=tenant_id,
+            key_name="miniflux_username",
+            encrypted_value=encrypt(mx_result["username"]),
+        ))
+        session.add(TenantSecret(
+            tenant_id=tenant_id,
+            key_name="miniflux_password",
+            encrypted_value=encrypt(mx_result["password"]),
         ))
 
     await session.commit()
