@@ -52,64 +52,50 @@ export default function News() {
     setOffset(0);
   };
 
-  const inputCls = "bg-black border border-border px-2 py-1 text-xs text-accent";
+  const inputCls = "bg-card border border-border px-2 py-1 text-xs text-text";
 
   return (
     <div className="space-y-2">
-      {/* Filter bar */}
       <div className="bb-panel">
-        <div className="bb-panel-header">NEWS FILTER</div>
+        <div className="bb-panel-header">新闻筛选</div>
         <div className="bb-panel-body flex flex-wrap gap-x-3 gap-y-2 items-end">
           <div>
-            <label className="block text-xs text-accent/70 mb-0.5">SOURCE</label>
-            <select
-              value={source}
-              onChange={(e) => { setSource(e.target.value); resetAndSearch(); }}
-              className={inputCls}
-            >
-              <option value="">ALL</option>
+            <label className="block text-xs text-accent/70 mb-0.5">来源</label>
+            <select value={source} onChange={(e) => { setSource(e.target.value); resetAndSearch(); }} className={inputCls}>
+              <option value="">全部</option>
               {sources.map((s) => <option key={s} value={s}>{s}</option>)}
             </select>
           </div>
           <div>
-            <label className="block text-xs text-accent/70 mb-0.5">TYPE</label>
-            <select
-              value={sourceType}
-              onChange={(e) => { setSourceType(e.target.value); resetAndSearch(); }}
-              className={inputCls}
-            >
-              <option value="">ALL</option>
-              <option value="hotlist">HOTLIST</option>
+            <label className="block text-xs text-accent/70 mb-0.5">类型</label>
+            <select value={sourceType} onChange={(e) => { setSourceType(e.target.value); resetAndSearch(); }} className={inputCls}>
+              <option value="">全部</option>
+              <option value="hotlist">热榜</option>
               <option value="rss">RSS</option>
             </select>
           </div>
           <div>
-            <label className="block text-xs text-accent/70 mb-0.5">SCORE</label>
+            <label className="block text-xs text-accent/70 mb-0.5">评分</label>
             <div className="flex items-center gap-1">
-              <input type="number" step="0.1" min="0" max="1" placeholder="min"
+              <input type="number" step="0.1" min="0" max="1" placeholder="最小"
                 value={minScore} onChange={(e) => setMinScore(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && resetAndSearch()}
                 className={`${inputCls} w-16`} />
               <span className="text-accent/50 text-xs">–</span>
-              <input type="number" step="0.1" min="0" max="1" placeholder="max"
+              <input type="number" step="0.1" min="0" max="1" placeholder="最大"
                 value={maxScore} onChange={(e) => setMaxScore(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && resetAndSearch()}
                 className={`${inputCls} w-16`} />
             </div>
           </div>
           <div>
-            <label className="block text-xs text-accent/70 mb-0.5">TAG</label>
-            <input
-              type="text"
-              value={tag}
-              onChange={(e) => setTag(e.target.value)}
+            <label className="block text-xs text-accent/70 mb-0.5">标签</label>
+            <input type="text" value={tag} onChange={(e) => setTag(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && resetAndSearch()}
-              placeholder="search tags..."
-              className={`${inputCls} w-36`}
-            />
+              placeholder="搜索标签..." className={`${inputCls} w-36`} />
           </div>
           <div>
-            <label className="block text-xs text-accent/70 mb-0.5">TIME</label>
+            <label className="block text-xs text-accent/70 mb-0.5">时间</label>
             <div className="flex items-center gap-1">
               <input type="date" value={startDate}
                 onChange={(e) => { setStartDate(e.target.value); resetAndSearch(); }}
@@ -120,49 +106,36 @@ export default function News() {
                 className={inputCls} />
             </div>
           </div>
-          <button
-            onClick={() => { setOffset(0); load(); }}
-            className="px-3 py-1 bg-accent text-black text-xs font-bold hover:bg-accent/80 transition-colors"
-          >
-            [ SEARCH ]
+          <button onClick={() => { setOffset(0); load(); }}
+            className="px-3 py-1 bg-accent text-black text-xs font-bold hover:bg-accent/80 transition-colors">
+            [ 搜索 ]
           </button>
-          <button
-            onClick={clearFilters}
-            className="px-3 py-1 border border-border text-accent/70 text-xs hover:text-accent hover:border-accent transition-colors"
-          >
-            [ CLEAR ]
+          <button onClick={clearFilters}
+            className="px-3 py-1 border border-border text-accent/70 text-xs hover:text-accent hover:border-accent transition-colors">
+            [ 清除 ]
           </button>
         </div>
       </div>
 
-      {error && <p className="text-negative text-xs">ERR: {error}</p>}
-      {loading && <p className="text-accent/50 text-xs">LOADING...</p>}
+      {error && <p className="text-negative text-xs">错误: {error}</p>}
+      {loading && <p className="text-accent/50 text-xs">加载中...</p>}
 
       <div className="bb-panel">
-        <div className="bb-panel-header">NEWS FEED</div>
+        <div className="bb-panel-header">新闻列表</div>
         <div className="bb-panel-body">
           <NewsTable items={items} />
         </div>
       </div>
 
-      {/* Pagination */}
       <div className="flex gap-2 items-center text-xs">
-        <button
-          disabled={offset === 0}
-          onClick={() => setOffset(Math.max(0, offset - PAGE_SIZE))}
-          className="px-2 py-1 border border-border text-accent disabled:opacity-30 hover:bg-accent/10"
-        >
-          &lt; PREV
+        <button disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - PAGE_SIZE))}
+          className="px-2 py-1 border border-border text-accent disabled:opacity-30 hover:bg-accent/10">
+          &lt; 上一页
         </button>
-        <span className="text-accent/50">
-          {offset + 1}–{offset + items.length}
-        </span>
-        <button
-          disabled={items.length < PAGE_SIZE}
-          onClick={() => setOffset(offset + PAGE_SIZE)}
-          className="px-2 py-1 border border-border text-accent disabled:opacity-30 hover:bg-accent/10"
-        >
-          NEXT &gt;
+        <span className="text-accent/50">{offset + 1}–{offset + items.length}</span>
+        <button disabled={items.length < PAGE_SIZE} onClick={() => setOffset(offset + PAGE_SIZE)}
+          className="px-2 py-1 border border-border text-accent disabled:opacity-30 hover:bg-accent/10">
+          下一页 &gt;
         </button>
       </div>
     </div>

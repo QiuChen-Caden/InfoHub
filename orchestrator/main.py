@@ -1,25 +1,32 @@
 """
-InfoHub Orchestrator 主流程 v2
+InfoHub Orchestrator 主流程 v3 — 多租户 SaaS
 
 改进：
-- 运行历史记录（run_history 表）
-- 推送成功后 mark_pushed
-- 翻译接入主流程
-- Miniflux 健康检查
+- 所有模块接收 tenant_id
+- 异步 PostgreSQL
+- 用量计量
+- 从数据库加载租户配置
 """
 
 import logging
-import os
-from datetime import datetime, timezone, timedelta
+import time
+from datetime import datetime
+from uuid import UUID
 
-from config_loader import load_config
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from config_loader import load_tenant_config
 from hotlist import fetch_all_hotlists
 from miniflux_client import MinifluxClient
 from ai_processor import AIProcessor
-from notifier import Notifier
 from exporter import HTMLExporter, ObsidianExporter
 from dedup import deduplicate
 from db import Database
+from metering import record_usage, check_quota
+from log_stream import stream_logs_to_redis
+from tz import get_tz
+from models_db import Tenant
+from delivery import CHANNEL_KEYS, create_outbox_records, deliver_outbox
 
 logging.basicConfig(
     level=logging.INFO,
@@ -28,120 +35,184 @@ logging.basicConfig(
 )
 log = logging.getLogger("infohub")
 
-TZ = timezone(timedelta(hours=int(os.environ.get("TZ_OFFSET", "8"))))
 
-
-def run():
-    config = load_config()
-    db = Database(config["output_dir"])
-    run_id = db.start_run()
-    now = datetime.now(TZ)
+async def run(session: AsyncSession, tenant_id: UUID, run_id: int = None):
+    t_start = time.monotonic()
+    config = await load_tenant_config(session, tenant_id)
+    db = Database(session, tenant_id)
+    if run_id is None:
+        run_id = await db.start_run()
+    tz = get_tz(config.get("timezone"))
+    now = datetime.now(tz)
     errors = []
 
-    log.info(f"开始运行 #{run_id} - {now.strftime('%Y-%m-%d %H:%M')}")
+    log.info(f"[{tenant_id}] 开始运行 #{run_id} - {now.strftime('%Y-%m-%d %H:%M')}")
 
-    # ---- 0. Miniflux 客户端 + 自动注册源 ----
-    mx = MinifluxClient(config["miniflux_url"], config["miniflux_api_key"])
-    if config.get("sources"):
-        mx.register_sources(config["sources"], config["rsshub_url"])
+    with stream_logs_to_redis(tenant_id, run_id, tz_name=config.get("timezone")):
+        try:
+            # ---- 0. Miniflux 客户端 + 自动注册源 ----
+            mx = MinifluxClient(
+                config["miniflux_url"],
+                config["miniflux_api_key"],
+                config.get("miniflux_username", ""),
+                config.get("miniflux_password", ""),
+            )
+            if config.get("sources"):
+                try:
+                    mx.register_sources(config["sources"], config["rsshub_url"])
+                except Exception as e:
+                    log.warning(f"[{tenant_id}] 源注册失败: {e}")
+                    errors.append(f"源注册失败: {e}")
 
-    # ---- 1. 抓取热榜 ----
-    hotlist_items = fetch_all_hotlists(config.get("platforms"))
-    log.info(f"热榜抓取完成: {len(hotlist_items)} 条")
+            # ---- 1. 抓取热榜 ----
+            hotlist_items = fetch_all_hotlists(config.get("platforms"))
+            if not hotlist_items:
+                log.warning(f"[{tenant_id}] 热榜抓取返回空，可能全部失败")
+                errors.append("热榜抓取返回空")
+            else:
+                log.info(f"[{tenant_id}] 热榜抓取完成: {len(hotlist_items)} 条")
 
-    # ---- 2. 拉取 Miniflux RSS ----
-    rss_items = mx.fetch_unread_entries(limit=200)
-    log.info(f"RSS 拉取完成: {len(rss_items)} 条")
+            # ---- 2. 拉取 Miniflux RSS ----
+            rss_items = mx.fetch_unread_entries(limit=200)
+            if not rss_items and (
+                config.get("miniflux_api_key")
+                or config.get("miniflux_username")
+            ):
+                log.warning(f"[{tenant_id}] RSS 拉取返回空，可能连接失败")
+                errors.append("RSS 拉取返回空")
+            else:
+                log.info(f"[{tenant_id}] RSS 拉取完成: {len(rss_items)} 条")
 
-    # ---- 3. 合并去重 ----
-    all_items = deduplicate(hotlist_items + rss_items)
-    new_items = db.filter_new(all_items)
-    log.info(f"去重后: {len(all_items)} 条, 新增: {len(new_items)} 条")
+            # ---- 3. 合并去重 ----
+            all_items = deduplicate(hotlist_items + rss_items)
+            new_items = await db.filter_new(all_items)
+            log.info(f"[{tenant_id}] 去重后: {len(all_items)} 条, 新增: {len(new_items)} 条")
 
-    if not new_items:
-        log.info("无新增内容，跳过处理")
-        # 即使无新增，也要标记 Miniflux 已读，否则未读队列永远排不空
-        _mark_miniflux_read(mx, rss_items)
-        db.finish_run(run_id,
-                      hotlist_count=len(hotlist_items),
-                      rss_count=len(rss_items),
-                      dedup_count=len(all_items),
-                      new_count=0, matched_count=0, pushed_count=0)
-        db.close()
-        return
+            if not new_items:
+                log.info(f"[{tenant_id}] 无新增内容，跳过处理")
+                _mark_miniflux_read(mx, rss_items)
+                await db.finish_run(run_id,
+                                    hotlist_count=len(hotlist_items),
+                                    rss_count=len(rss_items),
+                                    dedup_count=len(all_items),
+                                    new_count=0, matched_count=0, pushed_count=0,
+                                    errors="; ".join(errors))
+                return
 
-    # ---- 4. AI 筛选 ----
-    ai = AIProcessor(config.get("ai", {}))
-    matched = ai.filter_by_interest(new_items, config.get("interests", []))
-    log.info(f"AI 筛选: {len(matched)}/{len(new_items)} 条匹配")
+            # ---- 4. AI 筛选（带配额检查）----
+            ai = AIProcessor(config.get("ai", {}))
+            matched = []
+            ai_enabled = bool(config.get("ai", {}).get("api_key"))
+            if not ai_enabled:
+                matched = ai.filter_by_interest(new_items, config.get("interests", []))
+            elif await check_quota(session, tenant_id, "ai_filter", requested=len(new_items), tz_name=config.get("timezone")):
+                matched = ai.filter_by_interest(new_items, config.get("interests", []))
+                await record_usage(session, tenant_id, "ai_filter", count=len(new_items), tz_name=config.get("timezone"))
+            else:
+                log.warning(f"[{tenant_id}] AI 筛选配额已用完，跳过")
+            log.info(f"[{tenant_id}] AI 筛选: {len(matched)}/{len(new_items)} 条匹配")
 
-    # ---- 5. AI 翻译（英文标题翻中文）----
-    if matched and config.get("ai", {}).get("api_key"):
-        en_items = [it for it in matched
-                    if it.source_type == "rss" and _is_english(it.title)]
-        if en_items:
-            log.info(f"翻译 {len(en_items)} 条英文标题...")
-            for it in en_items:
-                translated = ai.translate(it.title)
-                if translated != it.title:
-                    it.title = f"{translated} | {it.title}"
-            log.info("翻译完成")
+            # ---- 5. AI 翻译（英文标题翻中文）----
+            if matched and config.get("ai", {}).get("api_key"):
+                en_items = [it for it in matched
+                            if it.source_type == "rss" and _is_english(it.title)]
+                if en_items and await check_quota(session, tenant_id, "ai_translate", requested=len(en_items), tz_name=config.get("timezone")):
+                    log.info(f"[{tenant_id}] 批量翻译 {len(en_items)} 条英文标题...")
+                    en_titles = [it.title for it in en_items]
+                    translated_titles = ai.translate_batch(en_titles)
+                    for it, translated in zip(en_items, translated_titles):
+                        if translated != it.title:
+                            it.title = f"{translated} | {it.title}"
+                    await record_usage(session, tenant_id, "ai_translate", count=len(en_items), tz_name=config.get("timezone"))
+                    log.info(f"[{tenant_id}] 翻译完成")
 
-    # ---- 6. AI 摘要 ----
-    summary = ""
-    if matched and config.get("ai", {}).get("summary_enabled", True):
-        summary = ai.generate_summaries(matched)
-        log.info("AI 摘要生成完成")
+            # ---- 6. AI 摘要 ----
+            summary = ""
+            if matched and ai_enabled and config.get("ai", {}).get("summary_enabled", True):
+                if await check_quota(session, tenant_id, "ai_summary", tz_name=config.get("timezone")):
+                    summary = ai.generate_summaries(matched)
+                    await record_usage(session, tenant_id, "ai_summary", tz_name=config.get("timezone"))
+                    log.info(f"[{tenant_id}] AI 摘要生成完成")
 
-    # ---- 7. 存储 ----
-    db.save_items(all_items)
-    db.mark_matched(matched)
+            # ---- 7. 存储 ----
+            t_db = time.monotonic()
+            await db.save_items(all_items)
+            await db.mark_matched(matched)
+            log.info(f"[{tenant_id}] DB 存储耗时 {time.monotonic()-t_db:.1f}s ({len(all_items)} 条)")
 
-    # ---- 8. 输出 ----
-    pushed_count = 0
-    if matched:
-        # 推送通知
-        notifier = Notifier(config.get("notification", {}))
-        success, fail = notifier.send(matched, now, summary=summary)
-        if success > 0 and fail == 0:
-            db.mark_pushed([it.id for it in matched])
-            pushed_count = len(matched)
-            log.info(f"推送成功: {success} 个渠道")
-        elif success > 0 and fail > 0:
-            # 部分渠道成功：不标记 pushed，下轮可补发失败渠道
-            errors.append(f"推送部分失败: {success} 成功, {fail} 失败")
-            log.warning(f"推送部分失败: {success} 成功, {fail} 失败，未标记 pushed 以便补发")
-        elif fail > 0:
-            errors.append(f"推送全部失败: {fail} 个渠道")
-            log.error(f"推送全部失败: {fail} 个渠道")
+            # ---- 8. 输出 ----
+            pushed_count = 0
+            if matched:
+                current_tenant = await session.get(Tenant, tenant_id)
+                if not current_tenant or not current_tenant.is_active:
+                    raise RuntimeError("租户已被禁用，停止输出和推送")
+                notification = dict(config.get("notification", {}))
+                channels = [
+                    channel for channel, key in CHANNEL_KEYS.items()
+                    if notification.get(key)
+                ]
+                outbox_ids = await create_outbox_records(
+                    session,
+                    tenant_id,
+                    run_id,
+                    channels,
+                    matched,
+                    now,
+                    summary,
+                )
+                # Persist news and outbox before any external side effect.
+                await session.commit()
 
-        # HTML 报告
-        html_exp = HTMLExporter(config["output_dir"])
-        html_exp.generate(matched, now, summary=summary)
+                delivery_results = [
+                    await deliver_outbox(session, outbox_id, config=config)
+                    for outbox_id in outbox_ids
+                ]
+                successful_count = sum(1 for ok, _ in delivery_results if ok)
+                failed_messages = [message for ok, message in delivery_results if not ok]
+                if successful_count:
+                    pushed_count = len(matched)
+                    log.info(f"[{tenant_id}] 推送成功: {successful_count} 个渠道")
+                if failed_messages:
+                    errors.extend(failed_messages)
+                    log.warning(f"[{tenant_id}] {len(failed_messages)} 个通知进入重试队列")
 
-        # Obsidian 导出
-        vault_path = config.get("obsidian_vault_path")
-        if vault_path:
-            obs_exp = ObsidianExporter(vault_path)
-            obs_exp.export(matched, now, summary=summary)
+                # HTML 报告
+                html_exp = HTMLExporter(config["output_dir"], config.get("tenant_id", ""))
+                html_exp.generate(matched, now, summary=summary)
 
-    # ---- 9. 标记 Miniflux 已读 ----
-    _mark_miniflux_read(mx, rss_items)
+                # Obsidian 导出
+                vault_path = config.get("obsidian_vault_path")
+                if vault_path:
+                    obs_exp = ObsidianExporter(vault_path)
+                    obs_exp.export(matched, now, summary=summary)
 
-    # ---- 10. 记录运行结果 ----
-    db.finish_run(run_id,
-                  hotlist_count=len(hotlist_items),
-                  rss_count=len(rss_items),
-                  dedup_count=len(all_items),
-                  new_count=len(new_items),
-                  matched_count=len(matched),
-                  pushed_count=pushed_count,
-                  errors="; ".join(errors))
-    db.close()
+            # ---- 9. 标记 Miniflux 已读 ----
+            _mark_miniflux_read(mx, rss_items)
 
-    log.info(f"运行完成 #{run_id} - "
-             f"新增 {len(new_items)}, 匹配 {len(matched)}, "
-             f"推送 {pushed_count}")
+            # ---- 10. 记录运行结果 ----
+            await db.finish_run(run_id,
+                                hotlist_count=len(hotlist_items),
+                                rss_count=len(rss_items),
+                                dedup_count=len(all_items),
+                                new_count=len(new_items),
+                                matched_count=len(matched),
+                                pushed_count=pushed_count,
+                                errors="; ".join(errors))
+
+            elapsed = time.monotonic() - t_start
+            log.info(f"[{tenant_id}] 运行完成 #{run_id} - "
+                     f"新增 {len(new_items)}, 匹配 {len(matched)}, "
+                     f"推送 {pushed_count}, 耗时 {elapsed:.1f}s")
+
+        except Exception as e:
+            log.exception(f"[{tenant_id}] 管道运行 #{run_id} 异常: {e}")
+            errors.append(f"管道异常: {e}")
+            try:
+                await db.finish_run(run_id, errors="; ".join(errors))
+                await session.commit()
+            except Exception:
+                log.exception(f"[{tenant_id}] finish_run 也失败了")
+            raise
 
 
 def _is_english(text: str) -> bool:
@@ -152,7 +223,7 @@ def _is_english(text: str) -> bool:
     return ascii_count / max(len(text), 1) > 0.6
 
 
-def _mark_miniflux_read(mx: MinifluxClient, rss_items):
+def _mark_miniflux_read(mx, rss_items):
     """提取 Miniflux entry ID 并标记已读"""
     miniflux_ids = [
         getattr(item, '_miniflux_id', None) for item in rss_items
@@ -160,7 +231,3 @@ def _mark_miniflux_read(mx: MinifluxClient, rss_items):
     miniflux_ids = [i for i in miniflux_ids if i is not None]
     if miniflux_ids:
         mx.mark_as_read(miniflux_ids)
-
-
-if __name__ == "__main__":
-    run()

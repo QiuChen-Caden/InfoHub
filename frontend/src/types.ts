@@ -1,3 +1,114 @@
+// Auth types
+export interface LoginRequest {
+  email: string;
+  password: string;
+}
+
+export interface RegisterRequest {
+  name: string;
+  email: string;
+  password: string;
+}
+
+export interface TokenResponse {
+  access_token: string;
+  token_type: string;
+}
+
+export interface User {
+  id: string;
+  name: string;
+  email: string;
+  plan: string;
+  role: 'admin' | 'user' | string;
+  created_at: string;
+}
+
+export interface AdminOverview {
+  total_tenants: number;
+  active_tenants: number;
+  admin_tenants: number;
+  total_news: number;
+  hotlist_total: number;
+  rss_total: number;
+  total_runs: number;
+  latest_run: string | null;
+}
+
+export interface AdminTenant {
+  id: string;
+  name: string;
+  email: string;
+  plan: string;
+  role: string;
+  is_active: boolean;
+  created_at: string | null;
+  news_count: number;
+  run_count: number;
+  latest_run: string | null;
+  quota_limits: Record<string, number>;
+}
+
+export interface AdminRun {
+  id: number;
+  tenant_id: string;
+  tenant_email: string;
+  started_at: string | null;
+  finished_at: string | null;
+  hotlist_count: number;
+  rss_count: number;
+  dedup_count: number;
+  new_count: number;
+  matched_count: number;
+  pushed_count: number;
+  errors: string;
+}
+
+export interface AdminTaskStatus {
+  running_count: number;
+  failed_count: number;
+  recent_runs: AdminRun[];
+}
+
+export interface AdminTenantDetail {
+  tenant: AdminTenant;
+  config: Record<string, unknown>;
+  stored_secret_keys: string[];
+  recent_runs: AdminRun[];
+}
+
+export interface AdminQuotaToken {
+  id: string;
+  prefix: string;
+  plan: string;
+  limits: Record<string, number>;
+  expires_at: string | null;
+  redeemed_by: string | null;
+  redeemed_at: string | null;
+  created_at: string | null;
+  is_active: boolean;
+}
+
+export interface AdminQuotaTokenCreateResponse {
+  tokens: string[];
+  plan: string;
+  limits: Record<string, number>;
+  expires_at: string | null;
+}
+
+export interface RedeemQuotaTokenResponse {
+  ok: boolean;
+  plan: string;
+  limits: Record<string, number>;
+}
+
+export interface UsageData {
+  plan: string;
+  usage: Record<string, { count: number; limit: number; overage_cost_cents?: number }>;
+  limits: Record<string, number>;
+}
+
+// News / Runs
 export interface NewsItem {
   id: string;
   title: string;
@@ -33,6 +144,31 @@ export interface Stats {
   rss_total: number;
 }
 
+// Config types — matches backend ConfigResponse / ConfigUpdate
+export interface ConfigData {
+  platforms: string[];
+  interests: string[];
+  rsshub_feeds: RSSHubFeed[];
+  external_feeds: ExternalFeed[];
+  notification: Record<string, unknown>;
+  ai_config: Record<string, unknown>;
+  cron_schedule: string;
+  timezone: string;
+  obsidian_export: boolean;
+}
+
+export interface ConfigUpdateRequest {
+  platforms?: string[];
+  interests?: string[];
+  rsshub_feeds?: RSSHubFeed[];
+  external_feeds?: ExternalFeed[];
+  notification?: Record<string, unknown>;
+  ai_config?: Record<string, unknown>;
+  cron_schedule?: string;
+  timezone?: string;
+  obsidian_export?: boolean;
+}
+
 export interface RSSHubFeed {
   route: string;
   name: string;
@@ -45,73 +181,19 @@ export interface ExternalFeed {
   category: string;
 }
 
-export interface ConfigData {
-  platforms: string[];
-  interests: string[];
-  ai: {
-    model: string;
-    api_key: string;
-    api_base: string;
-    timeout: number;
-    max_tokens: number;
-    batch_size: number;
-    batch_interval: number;
-    min_score: number;
-    summary_enabled: boolean;
-  };
-  notification: {
-    channels: string[];
-    batch_interval: number;
-    telegram_bot_token: string;
-    telegram_chat_id: string;
-    feishu_webhook_url: string;
-    dingtalk_webhook_url: string;
-    email_from: string;
-    email_password: string;
-    email_to: string;
-    slack_webhook_url: string;
-  };
-  sources: {
-    rsshub_feeds: RSSHubFeed[];
-    external_feeds: ExternalFeed[];
-  };
-  cron_schedule: string;
-  rsshub_url: string;
-  miniflux_url: string;
-  obsidian_vault_path: string;
+export interface ApiKeyItem {
+  id: string;
+  name: string;
+  prefix: string;
+  expires_at: string | null;
+  created_at: string;
+  is_active: boolean;
 }
 
-export interface ConfigUpdateRequest {
-  platforms: string[];
-  interests: string[];
-  ai: {
-    model: string;
-    api_key: string;
-    api_base: string;
-    timeout: number;
-    max_tokens: number;
-    batch_size: number;
-    batch_interval: number;
-    min_score: number;
-    summary_enabled: boolean;
-  };
-  notification: {
-    batch_interval: number;
-    telegram_bot_token: string;
-    telegram_chat_id: string;
-    feishu_webhook_url: string;
-    dingtalk_webhook_url: string;
-    email_from: string;
-    email_password: string;
-    email_to: string;
-    slack_webhook_url: string;
-  };
-  sources: {
-    rsshub_feeds: RSSHubFeed[];
-    external_feeds: ExternalFeed[];
-  };
-  cron_schedule: string;
-  rsshub_url: string;
-  miniflux_url: string;
-  obsidian_vault_path: string;
+export interface CreateApiKeyResponse {
+  key: string;
+  id: string;
+  name: string;
+  prefix: string;
+  expires_at: string | null;
 }

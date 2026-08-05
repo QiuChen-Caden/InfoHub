@@ -1,195 +1,169 @@
-"""数据存储 — PostgreSQL (生产) / SQLite (本地开发)"""
+"""PostgreSQL 异步数据层 — 多租户隔离"""
 
 import os
+import asyncio
 import logging
-from datetime import datetime
-from pathlib import Path
-from typing import List
+from datetime import datetime, timezone
+from typing import List, Optional
+from uuid import UUID
+
+from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
+from sqlalchemy import select, update, text
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from models import NewsItem
+from models_db import News, RunHistory, UsageRecord
 
 log = logging.getLogger("infohub.db")
 
-PG_SCHEMA = """
-CREATE TABLE IF NOT EXISTS news (
-    id TEXT PRIMARY KEY,
-    title TEXT NOT NULL,
-    url TEXT DEFAULT '',
-    source TEXT DEFAULT '',
-    source_type TEXT DEFAULT '',
-    rank INTEGER DEFAULT 0,
-    published_at TEXT DEFAULT '',
-    score REAL DEFAULT 0,
-    tags TEXT DEFAULT '',
-    summary TEXT DEFAULT '',
-    pushed BOOLEAN DEFAULT FALSE,
-    created_at TIMESTAMPTZ DEFAULT NOW()
-);
+DATABASE_URL = os.environ.get("DATABASE_URL", "")
 
-CREATE TABLE IF NOT EXISTS run_history (
-    id SERIAL PRIMARY KEY,
-    started_at TIMESTAMPTZ NOT NULL,
-    finished_at TIMESTAMPTZ,
-    hotlist_count INTEGER DEFAULT 0,
-    rss_count INTEGER DEFAULT 0,
-    dedup_count INTEGER DEFAULT 0,
-    new_count INTEGER DEFAULT 0,
-    matched_count INTEGER DEFAULT 0,
-    pushed_count INTEGER DEFAULT 0,
-    errors TEXT DEFAULT ''
-);
-
-CREATE INDEX IF NOT EXISTS idx_news_created ON news(created_at);
-CREATE INDEX IF NOT EXISTS idx_news_source_type ON news(source_type);
-"""
-
-SQLITE_SCHEMA = """
-CREATE TABLE IF NOT EXISTS news (
-    id TEXT PRIMARY KEY,
-    title TEXT NOT NULL,
-    url TEXT DEFAULT '',
-    source TEXT DEFAULT '',
-    source_type TEXT DEFAULT '',
-    rank INTEGER DEFAULT 0,
-    published_at TEXT DEFAULT '',
-    score REAL DEFAULT 0,
-    tags TEXT DEFAULT '',
-    summary TEXT DEFAULT '',
-    pushed INTEGER DEFAULT 0,
-    created_at TEXT DEFAULT (datetime('now'))
-);
-
-CREATE TABLE IF NOT EXISTS run_history (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    started_at TEXT NOT NULL,
-    finished_at TEXT,
-    hotlist_count INTEGER DEFAULT 0,
-    rss_count INTEGER DEFAULT 0,
-    dedup_count INTEGER DEFAULT 0,
-    new_count INTEGER DEFAULT 0,
-    matched_count INTEGER DEFAULT 0,
-    pushed_count INTEGER DEFAULT 0,
-    errors TEXT DEFAULT ''
-);
-
-CREATE INDEX IF NOT EXISTS idx_news_created ON news(created_at);
-CREATE INDEX IF NOT EXISTS idx_news_source_type ON news(source_type);
-"""
+if DATABASE_URL:
+    engine = create_async_engine(
+        DATABASE_URL, pool_size=20, max_overflow=10,
+        pool_pre_ping=True, pool_recycle=300,
+        connect_args={"command_timeout": 60},
+    )
+    SessionLocal = async_sessionmaker(engine, expire_on_commit=False)
+else:
+    engine = None
+    SessionLocal = None
+    log.warning("DATABASE_URL 未设置，数据库功能不可用")
 
 
-def _use_postgres() -> bool:
-    return bool(os.environ.get("DATABASE_URL"))
+async def init_db():
+    """Apply versioned database migrations."""
+    if not engine:
+        raise RuntimeError("DATABASE_URL 未设置，无法初始化数据库")
+    from alembic import command
+    from alembic.config import Config
+
+    alembic_config = Config(os.path.join(os.path.dirname(__file__), "alembic.ini"))
+    await asyncio.to_thread(command.upgrade, alembic_config, "head")
+    async with engine.begin() as conn:
+        bootstrap_email = os.environ.get("BOOTSTRAP_EMAIL", "")
+        if bootstrap_email:
+            await conn.execute(
+                text("UPDATE tenants SET role = 'admin' WHERE email = :email"),
+                {"email": bootstrap_email},
+            )
+    log.info("数据库迁移完成")
+
+
+async def get_session() -> AsyncSession:
+    async with SessionLocal() as session:
+        try:
+            yield session
+        except Exception:
+            await session.rollback()
+            raise
 
 
 class Database:
-    """统一数据库接口，自动选择 PostgreSQL 或 SQLite"""
+    """多租户数据库操作，所有查询绑定 tenant_id"""
 
-    def __init__(self, output_dir: str):
-        db_url = os.environ.get("DATABASE_URL")
-        if db_url:
-            import psycopg2
-            self.conn = psycopg2.connect(db_url)
-            self.conn.autocommit = False
-            self._pg = True
-            with self.conn.cursor() as cur:
-                cur.execute(PG_SCHEMA)
-            self.conn.commit()
-            log.info("已连接 PostgreSQL")
-        else:
-            import sqlite3
-            db_path = Path(output_dir) / "infohub.db"
-            db_path.parent.mkdir(parents=True, exist_ok=True)
-            self.conn = sqlite3.connect(str(db_path))
-            self.conn.executescript(SQLITE_SCHEMA)
-            self._pg = False
-            log.info(f"已连接 SQLite: {db_path}")
+    def __init__(self, session: AsyncSession, tenant_id: UUID):
+        self.session = session
+        self.tenant_id = tenant_id
 
-    def _execute(self, sql: str, params=None):
-        """统一执行：PostgreSQL 用 %s 占位符，SQLite 用 ?"""
-        if self._pg:
-            # 把 ? 转为 %s
-            sql = sql.replace("?", "%s")
-        cur = self.conn.cursor()
-        cur.execute(sql, params or ())
-        return cur
-
-    def filter_new(self, items: List[NewsItem]) -> List[NewsItem]:
-        existing = set()
-        cur = self._execute("SELECT id FROM news")
-        for row in cur:
-            existing.add(row[0])
-        cur.close()
+    async def filter_new(self, items: List[NewsItem]) -> List[NewsItem]:
+        if not items:
+            return []
+        ids = [it.id for it in items]
+        result = await self.session.execute(
+            select(News.id).where(
+                News.tenant_id == self.tenant_id,
+                News.id.in_(ids),
+            )
+        )
+        existing = {row[0] for row in result}
         return [it for it in items if it.id not in existing]
 
-    def save_items(self, items: List[NewsItem]):
-        sql = """INSERT INTO news
-            (id, title, url, source, source_type, rank,
-             published_at, score, tags, summary)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"""
-        if self._pg:
-            sql += " ON CONFLICT (id) DO NOTHING"
-            sql = sql.replace("?", "%s")
-        else:
-            sql = "INSERT OR IGNORE INTO news" + sql[len("INSERT INTO news"):]
+    async def save_items(self, items: List[NewsItem]):
+        """批量 upsert 新闻条目（ON CONFLICT DO NOTHING）"""
+        if not items:
+            return
+        log.info(f"保存 {len(items)} 条新闻到数据库")
+        values = [
+            dict(
+                id=item.id,
+                tenant_id=self.tenant_id,
+                title=item.title,
+                url=item.url,
+                source=item.source,
+                source_type=item.source_type,
+                rank=item.rank,
+                published_at=None,
+                score=item.score,
+                tags=",".join(item.tags) if item.tags else "",
+                summary=item.summary,
+            )
+            for item in items
+        ]
+        stmt = pg_insert(News).values(values).on_conflict_do_nothing(
+            index_elements=["id", "tenant_id"]
+        )
+        await self.session.execute(stmt)
+        await self.session.flush()
+
+    async def mark_matched(self, items: List[NewsItem]):
+        if not items:
+            return
+        log.info(f"标记 {len(items)} 条为已匹配")
         for item in items:
-            try:
-                cur = self.conn.cursor()
-                cur.execute(sql, (
-                    item.id, item.title, item.url, item.source,
-                    item.source_type, item.rank, item.published_at,
-                    item.score, ",".join(item.tags), item.summary,
-                ))
-                cur.close()
-            except Exception as e:
-                log.error(f"写入失败: {item.title} - {e}")
-        self.conn.commit()
-
-    def mark_matched(self, items: List[NewsItem]):
-        for item in items:
-            self._execute(
-                "UPDATE news SET score=?, tags=?, summary=? WHERE id=?",
-                (item.score, ",".join(item.tags), item.summary, item.id),
+            await self.session.execute(
+                update(News)
+                .where(News.id == item.id, News.tenant_id == self.tenant_id)
+                .values(
+                    score=item.score,
+                    tags=",".join(item.tags) if item.tags else "",
+                    summary=item.summary or "",
+                )
             )
-        self.conn.commit()
+        await self.session.flush()
 
-    def mark_pushed(self, item_ids: List[str]):
-        for iid in item_ids:
-            self._execute("UPDATE news SET pushed=1 WHERE id=?", (iid,))
-        self.conn.commit()
+    async def mark_pushed(self, item_ids: List[str]):
+        if not item_ids:
+            return
+        await self.session.execute(
+            update(News)
+            .where(News.tenant_id == self.tenant_id, News.id.in_(item_ids))
+            .values(pushed=True)
+        )
+        await self.session.flush()
 
-    # ---- 运行历史 ----
-    def start_run(self) -> int:
-        now = datetime.utcnow().isoformat()
-        if self._pg:
-            cur = self.conn.cursor()
-            cur.execute(
-                "INSERT INTO run_history (started_at) VALUES (%s) RETURNING id",
-                (now,),
-            )
-            run_id = cur.fetchone()[0]
-            cur.close()
-        else:
-            cur = self.conn.execute(
-                "INSERT INTO run_history (started_at) VALUES (?)", (now,)
-            )
-            run_id = cur.lastrowid
-        self.conn.commit()
-        return run_id
+    async def start_run(self) -> int:
+        run = RunHistory(
+            tenant_id=self.tenant_id,
+            started_at=datetime.now(timezone.utc),
+        )
+        self.session.add(run)
+        await self.session.flush()
+        log.info(f"创建运行记录 #{run.id} tenant={self.tenant_id}")
+        return run.id
 
-    def finish_run(self, run_id: int, **stats):
-        fields = ", ".join(f"{k}=%s" if self._pg else f"{k}=?"
-                           for k in stats)
-        values = list(stats.values()) + [run_id]
-        now = datetime.utcnow().isoformat()
-        if self._pg:
-            sql = f"UPDATE run_history SET finished_at=%s, {fields} WHERE id=%s"
-        else:
-            fields_sqlite = ", ".join(f"{k}=?" for k in stats)
-            sql = f"UPDATE run_history SET finished_at=?, {fields_sqlite} WHERE id=?"
-        cur = self.conn.cursor()
-        cur.execute(sql, [now] + values)
-        cur.close()
-        self.conn.commit()
+    async def finish_run(self, run_id: int, **stats):
+        log.info(f"完成运行记录 #{run_id}")
+        await self.session.execute(
+            update(RunHistory)
+            .where(RunHistory.id == run_id, RunHistory.tenant_id == self.tenant_id)
+            .values(finished_at=datetime.now(timezone.utc), **stats)
+        )
+        await self.session.flush()
 
-    def close(self):
-        self.conn.close()
+    async def get_news(self, limit: int = 50, offset: int = 0,
+                       source_type: Optional[str] = None) -> List[News]:
+        q = select(News).where(News.tenant_id == self.tenant_id)
+        if source_type:
+            q = q.where(News.source_type == source_type)
+        q = q.order_by(News.created_at.desc()).limit(limit).offset(offset)
+        result = await self.session.execute(q)
+        return list(result.scalars().all())
+
+    async def get_runs(self, limit: int = 20) -> List[RunHistory]:
+        q = (select(RunHistory)
+             .where(RunHistory.tenant_id == self.tenant_id)
+             .order_by(RunHistory.id.desc())
+             .limit(limit))
+        result = await self.session.execute(q)
+        return list(result.scalars().all())

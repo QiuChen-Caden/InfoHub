@@ -1,90 +1,160 @@
+networks:
+  frontend:
+  backend:
+  data:
+
 services:
   # ---- 数据库 ----
   postgres:
     image: postgres:16-alpine
     restart: unless-stopped
+    networks:
+      - data
     environment:
-      POSTGRES_USER: miniflux
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: miniflux
-      INFOHUB_DB_PASSWORD: ${INFOHUB_DB_PASSWORD}
+      POSTGRES_USER: infohub
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
+      POSTGRES_DB: infohub
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./init-db.sh:/tmp/init-infohub.sh:ro
-    entrypoint:
-      - sh
-      - -c
-      - |
-        sed 's/\r$$//' /tmp/init-infohub.sh > /docker-entrypoint-initdb.d/init-infohub.sh
-        chmod +x /docker-entrypoint-initdb.d/init-infohub.sh
-        exec docker-entrypoint.sh postgres
     healthcheck:
-      test: ["CMD", "pg_isready", "-U", "miniflux"]
+      test: ["CMD", "pg_isready", "-U", "infohub"]
       interval: 10s
       start_period: 30s
+    stop_grace_period: 30s
     deploy:
       resources:
         limits:
           memory: 256M
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  postgres-miniflux:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    networks:
+      - data
+    environment:
+      POSTGRES_USER: miniflux
+      POSTGRES_PASSWORD: ${MINIFLUX_DB_PASSWORD:?MINIFLUX_DB_PASSWORD must be set}
+      POSTGRES_DB: miniflux
+    volumes:
+      - postgres_miniflux_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "miniflux"]
+      interval: 10s
+      start_period: 30s
+    stop_grace_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   redis:
     image: redis:7-alpine
     restart: unless-stopped
-    command: redis-server --requirepass ${REDIS_PASSWORD}
+    networks:
+      - data
+    command: redis-server --requirepass ${REDIS_PASSWORD:?REDIS_PASSWORD must be set} --appendonly yes
     volumes:
       - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 10s
+      start_period: 10s
+    stop_grace_period: 15s
     deploy:
       resources:
         limits:
           memory: 128M
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  redis-rsshub:
+    image: redis:7-alpine
+    restart: unless-stopped
+    networks:
+      - data
+    command: redis-server --requirepass ${REDIS_RSSHUB_PASSWORD:?REDIS_RSSHUB_PASSWORD must be set} --appendonly yes
+    volumes:
+      - redis_rsshub_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_RSSHUB_PASSWORD}", "ping"]
+      interval: 10s
+      start_period: 10s
+    stop_grace_period: 15s
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   # ---- 数据源层 ----
   rsshub:
-    image: diygod/rsshub:latest
+    image: diygod/rsshub:2025-01-13
     restart: unless-stopped
-    ports:
-      - "3200:1200"
+    networks:
+      - backend
+      - data
     environment:
       NODE_ENV: production
       CACHE_TYPE: redis
       CACHE_EXPIRE: 1800
       CACHE_CONTENT_EXPIRE: 7200
-      REDIS_URL: "redis://:${REDIS_PASSWORD}@redis:6379/"
+      REDIS_URL: "redis://:${REDIS_RSSHUB_PASSWORD:?}@redis-rsshub:6379/0"
       REQUEST_RETRY: 3
       REQUEST_TIMEOUT: 10000
-      DEBUG_INFO: "true"
-      # 中文平台 Cookie（按需填写）
-      # BILIBILI_COOKIE_UID: ""
-      # WEIBO_COOKIES: ""
-      # ZHIHU_COOKIES: ""
     depends_on:
-      - redis
+      redis-rsshub:
+        condition: service_healthy
     deploy:
       resources:
         limits:
           memory: 1024M
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   # ---- 聚合层 ----
   miniflux:
-    image: miniflux/miniflux:latest
+    image: miniflux/miniflux:2.2.5
     restart: unless-stopped
+    networks:
+      - backend
+      - data
     ports:
-      - "8880:8080"
+      - "127.0.0.1:8480:8080"
     environment:
-      DATABASE_URL: "postgres://miniflux:${POSTGRES_PASSWORD}@postgres/miniflux?sslmode=disable"
+      DATABASE_URL: "postgres://miniflux:${MINIFLUX_DB_PASSWORD:?}@postgres-miniflux/miniflux?sslmode=disable"
       RUN_MIGRATIONS: 1
       CREATE_ADMIN: 1
-      ADMIN_USERNAME: ${MINIFLUX_ADMIN}
-      ADMIN_PASSWORD: ${MINIFLUX_PASSWORD}
+      ADMIN_USERNAME: ${MINIFLUX_ADMIN:?MINIFLUX_ADMIN must be set}
+      ADMIN_PASSWORD: ${MINIFLUX_PASSWORD:?MINIFLUX_PASSWORD must be set}
       POLLING_FREQUENCY: 30
       BATCH_SIZE: 50
       WORKER_POOL_SIZE: 8
       CLEANUP_ARCHIVE_READ_DAYS: 30
       CLEANUP_ARCHIVE_UNREAD_DAYS: 90
-      FETCH_ALLOW_PRIVATE_NETWORKS: 1
-      FETCHER_ALLOW_PRIVATE_NETWORKS: 1
+      FETCH_ALLOW_PRIVATE_NETWORKS: 0
+      FETCHER_ALLOW_PRIVATE_NETWORKS: 0
     depends_on:
-      postgres:
+      postgres-miniflux:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "miniflux", "-healthcheck", "auto"]
@@ -94,80 +164,149 @@ services:
       resources:
         limits:
           memory: 128M
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
-  # ---- 编排层 ----
-  orchestrator:
-    build:
-      context: ./orchestrator
-      dockerfile: Dockerfile
-    restart: unless-stopped
-    environment:
-      APP_MODE: cron
-      DATABASE_URL: "postgresql://infohub:${INFOHUB_DB_PASSWORD}@postgres:5432/infohub"
-      MINIFLUX_URL: "http://miniflux:8080"
-      MINIFLUX_API_KEY: ${MINIFLUX_API_KEY}
-      RSSHUB_URL: "http://rsshub:1200"
-      AI_API_KEY: ${AI_API_KEY}
-      AI_MODEL: ${AI_MODEL:-deepseek/deepseek-chat}
-      AI_API_BASE: ${AI_API_BASE:-}
-      CRON_SCHEDULE: ${CRON_SCHEDULE:-*/30 * * * *}
-      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
-      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
-      FEISHU_WEBHOOK_URL: ${FEISHU_WEBHOOK_URL:-}
-      DINGTALK_WEBHOOK_URL: ${DINGTALK_WEBHOOK_URL:-}
-      EMAIL_FROM: ${EMAIL_FROM:-}
-      EMAIL_PASSWORD: ${EMAIL_PASSWORD:-}
-      EMAIL_TO: ${EMAIL_TO:-}
-      SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL:-}
-      OBSIDIAN_VAULT_PATH: /obsidian
-    volumes:
-      - ./config:/app/config:ro
-      - ./output:/app/output
-      - ${OBSIDIAN_VAULT_PATH:-./obsidian_output}:/obsidian
-    depends_on:
-      postgres:
-        condition: service_healthy
-      miniflux:
-        condition: service_healthy
-      rsshub:
-        condition: service_started
-
-  # ---- API 层 ----
+  # ---- SaaS API 层（含前端）----
   api:
     build:
       context: .
       dockerfile: Dockerfile.api
     restart: unless-stopped
+    networks:
+      - frontend
+      - backend
+      - data
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8500:8000"
     environment:
       APP_MODE: api
-      DATABASE_URL: "postgresql://infohub:${INFOHUB_DB_PASSWORD}@postgres:5432/infohub"
-      CONFIG_DIR: /app/config
-      CONFIG_SECRET: ${CONFIG_SECRET:-}
+      TZ: Asia/Shanghai
+      APP_TIMEZONE: Asia/Shanghai
+      DATABASE_URL: "postgresql+asyncpg://infohub:${POSTGRES_PASSWORD:?}@postgres:5432/infohub"
+      REDIS_URL: "redis://:${REDIS_PASSWORD:?}@redis:6379/0"
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:?ENCRYPTION_KEY must be set}
       MINIFLUX_URL: "http://miniflux:8080"
-      MINIFLUX_API_KEY: ${MINIFLUX_API_KEY}
+      MINIFLUX_ADMIN: ${MINIFLUX_ADMIN:?}
+      MINIFLUX_PASSWORD: ${MINIFLUX_PASSWORD:?}
       RSSHUB_URL: "http://rsshub:1200"
-      AI_API_KEY: ${AI_API_KEY}
-      AI_MODEL: ${AI_MODEL:-deepseek/deepseek-chat}
-      AI_API_BASE: ${AI_API_BASE:-}
-      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
-      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
-      FEISHU_WEBHOOK_URL: ${FEISHU_WEBHOOK_URL:-}
-      DINGTALK_WEBHOOK_URL: ${DINGTALK_WEBHOOK_URL:-}
-      EMAIL_FROM: ${EMAIL_FROM:-}
-      EMAIL_PASSWORD: ${EMAIL_PASSWORD:-}
-      EMAIL_TO: ${EMAIL_TO:-}
-      SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL:-}
-      OBSIDIAN_VAULT_PATH: /obsidian
+      OUTPUT_DIR: /app/output
+      BOOTSTRAP_EMAIL: ${BOOTSTRAP_EMAIL:-}
+      BOOTSTRAP_PASSWORD: ${BOOTSTRAP_PASSWORD:-}
+      ENVIRONMENT: ${ENVIRONMENT:-production}
+      CORS_ORIGINS: ${CORS_ORIGINS:-}
+      RSSHUB_ALLOWED_PREFIXES: ${RSSHUB_ALLOWED_PREFIXES:-}
     volumes:
-      - ./config:/app/config
+      - ./config:/app/config:ro
       - ./output:/app/output
-      - ${OBSIDIAN_VAULT_PATH:-./obsidian_output}:/obsidian
     depends_on:
       postgres:
         condition: service_healthy
+      redis:
+        condition: service_healthy
+      miniflux:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+    stop_grace_period: 15s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ---- Celery Worker ----
+  worker:
+    build:
+      context: ./orchestrator
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    networks:
+      - backend
+      - data
+    environment:
+      APP_MODE: worker
+      TZ: Asia/Shanghai
+      APP_TIMEZONE: Asia/Shanghai
+      DATABASE_URL: "postgresql+asyncpg://infohub:${POSTGRES_PASSWORD:?}@postgres:5432/infohub"
+      REDIS_URL: "redis://:${REDIS_PASSWORD:?}@redis:6379/0"
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:?}
+      MINIFLUX_URL: "http://miniflux:8080"
+      MINIFLUX_ADMIN: ${MINIFLUX_ADMIN:?}
+      MINIFLUX_PASSWORD: ${MINIFLUX_PASSWORD:?}
+      RSSHUB_URL: "http://rsshub:1200"
+      OUTPUT_DIR: /app/output
+      SINGLE_TENANT: ${SINGLE_TENANT:-}
+      RSSHUB_ALLOWED_PREFIXES: ${RSSHUB_ALLOWED_PREFIXES:-}
+    volumes:
+      - ./output:/app/output
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      miniflux:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A tasks inspect ping -d celery@$$HOSTNAME 2>/dev/null || exit 1"]
+      interval: 30s
+      start_period: 30s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 1024M
+    stop_grace_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ---- Celery Beat 调度器 ----
+  beat:
+    build:
+      context: ./orchestrator
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    networks:
+      - backend
+      - data
+    environment:
+      APP_MODE: beat
+      TZ: Asia/Shanghai
+      APP_TIMEZONE: Asia/Shanghai
+      DATABASE_URL: "postgresql+asyncpg://infohub:${POSTGRES_PASSWORD:?}@postgres:5432/infohub"
+      REDIS_URL: "redis://:${REDIS_PASSWORD:?}@redis:6379/0"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "test -f /tmp/celerybeat.pid && kill -0 $(cat /tmp/celerybeat.pid) || exit 1"]
+      interval: 30s
+      start_period: 15s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+    stop_grace_period: 10s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 volumes:
   postgres_data:
+  postgres_miniflux_data:
   redis_data:
+  redis_rsshub_data:

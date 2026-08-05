@@ -29,6 +29,11 @@
      ┌─────┘   │   └──────┐
      ▼         ▼          ▼
   推送通知   HTML报告   Obsidian
+               │
+        ┌──────▼──────┐
+        │  FastAPI +   │  ← API 层
+        │  React 前端  │
+        └─────────────┘
 ```
 
 ## 功能特性
@@ -41,7 +46,10 @@
 - **多渠道推送** — Telegram / 飞书 / 钉钉 / Slack / 邮件，按需配置
 - **HTML 交互报告** — 带统计卡片、标签导航、来源筛选的暗色主题报告页
 - **Obsidian 导出** — 自动生成带 frontmatter 的日报笔记，直接进入知识库
-- **定时调度** — 基于 supercronic 的 cron 调度，默认每 30 分钟运行一次
+- **Web 管理面板** — React + Tailwind 构建的 Dashboard，查看运行状态、新闻列表、用量统计、配置管理
+- **多租户售卖** — 管理员生成一次性额度令牌，客户登录后在配置页兑换；每个令牌可以绑定独立的月度 AI / 推送额度
+- **REST API** — FastAPI 提供数据查询接口，支持新闻筛选、运行记录、配置读写
+- **定时调度** — 基于 croniter 的 Python 原生调度，默认每 30 分钟运行一次
 - **AI 降级容错** — AI 服务不可用时自动降级为关键词匹配，保证基本可用
 - **Docker 一键部署** — 全部服务容器化，`docker compose up` 即可运行
 
@@ -63,6 +71,11 @@
 
 ## 快速开始
 
+### 环境要求
+
+- Docker 及 Docker Compose
+- 不少于 2 GB 可用内存（推荐 4 GB）
+
 ### 1. 克隆项目
 
 ```bash
@@ -70,31 +83,43 @@ git clone https://github.com/QiuChen-Caden/InfoHub.git
 cd InfoHub
 ```
 
-### 2. 配置环境变量
+### 2. 初始化并配置环境变量
 
-复制并编辑 `.env` 文件：
+推荐使用初始化脚本生成随机密钥和密码：
 
 ```bash
-cp .env.example .env
+bash init.sh
 ```
 
-必填项：
+然后编辑 `.env`。至少需要以下值：
 
 ```env
-# 数据库
+# 应用安全密钥
+JWT_SECRET=至少 32 字符的随机值
+ENCRYPTION_KEY=Fernet 密钥
+
+# 数据库和 Redis
 POSTGRES_PASSWORD=your_secure_password
+MINIFLUX_DB_PASSWORD=your_miniflux_db_password
+REDIS_PASSWORD=your_redis_password
+REDIS_RSSHUB_PASSWORD=another_redis_password
 
 # Miniflux
 MINIFLUX_ADMIN=admin
 MINIFLUX_PASSWORD=your_password
-MINIFLUX_API_KEY=your_miniflux_api_key
+
+# 首个管理员（首次启动时创建）
+BOOTSTRAP_EMAIL=admin@example.com
+BOOTSTRAP_PASSWORD=your_password
 
 # AI（支持 DeepSeek / OpenAI / 任何 LiteLLM 兼容模型）
 AI_API_KEY=your_api_key
 AI_MODEL=deepseek/deepseek-chat
 ```
 
-可选通知渠道（按需配置）：
+`REDIS_RSSHUB_PASSWORD` 必须与 `REDIS_PASSWORD` 不同。通知、AI 和 Miniflux 密钥也可以在 Web 配置页保存，数据库只保存加密值。
+
+可选通知渠道（按需配置，建议在 Web 配置页填写）：
 
 ```env
 # Telegram
@@ -125,20 +150,57 @@ OBSIDIAN_VAULT_PATH=/path/to/your/vault
 docker compose up -d
 ```
 
-首次启动会自动：
-- 初始化 PostgreSQL 数据库
-- 启动 RSSHub 实例
-- 配置 Miniflux 并创建管理员账户
-- 自动注册 `config/sources.yaml` 中的 RSS 订阅源
-- 立即执行一次信息抓取
+首次启动会自动执行 Alembic 数据库迁移、创建 Miniflux 管理员和应用管理员，并启动 API、前端、Worker、Beat、RSSHub 及其独立 Redis 缓存。
 
-### 4. 获取 Miniflux API Key
+### 4. 访问管理面板
 
-启动后访问 `http://localhost:8080`，登录 Miniflux → 设置 → API 密钥 → 创建，将生成的 key 填入 `.env` 的 `MINIFLUX_API_KEY`，然后重启：
+浏览器打开 `http://localhost:8500`，可查看：
+- **Dashboard** — 运行概览、最新统计
+- **News** — 新闻列表，支持按来源、类型、分数、标签、时间筛选
+- **Runs** — 历次 pipeline 运行记录
+- **Usage** — AI 用量统计
+- **Config** — 在线修改配置
+
+### 5. 额度令牌售卖流程
+
+管理员进入管理面板的“额度令牌”区域，填写套餐标识、月度额度 JSON、数量和有效天数后生成令牌。原始令牌只在生成响应中返回一次，数据库只保存 SHA-256 哈希；请在后台安全地复制并发给客户。
+
+客户注册或登录后进入“Config / 额度令牌”，粘贴 `ihq_...` 令牌并点击兑换。令牌只能被一个租户兑换一次，兑换后立即失效，租户的套餐标识和月度额度会被覆盖。例如：
+
+```json
+{
+  "ai_filter": 5000,
+  "ai_summary": 500,
+  "ai_translate": 1000,
+  "push_telegram": 2000,
+  "push_feishu": 2000,
+  "push_dingtalk": 0,
+  "push_email": 2000,
+  "push_slack": 0
+}
+```
+
+也可以由管理员调用接口批量生成：
 
 ```bash
-docker compose restart orchestrator
+curl -X POST http://localhost:8500/api/v1/admin/quota-tokens \
+  -H "Authorization: Bearer <admin-jwt>" \
+  -H 'Content-Type: application/json' \
+  -d '{"plan":"pro-2026","count":10,"expires_in_days":365,"limits":{"ai_filter":5000,"ai_summary":500}}'
 ```
+
+额度按租户配置的时区按自然月计算；达到任一额度后对应能力会被拒绝，不产生超额账单。管理员可以查看令牌前缀、状态和额度，也可以撤销尚未兑换的令牌。
+
+### 6. 数据库迁移
+
+容器启动会自动执行迁移。手工操作时：
+
+```bash
+DATABASE_URL='postgresql+asyncpg://...' \
+  PYTHONPATH=orchestrator alembic -c orchestrator/alembic.ini upgrade head
+```
+
+迁移使用 PostgreSQL advisory lock，多个 API / Worker 同时启动不会并发修改 schema。
 
 ## 配置说明
 
@@ -186,38 +248,65 @@ external_feeds:
 | `ai.model` | LLM 模型名称 | `deepseek/deepseek-chat` |
 | `ai.min_score` | AI 筛选最低分数阈值 | `0.7` |
 | `ai.batch_size` | 每批发送给 AI 的条目数 | `200` |
+| `ai.max_tokens` | AI 单次最大 token 数 | `5000` |
+| `ai.timeout` | AI 请求超时（秒） | `120` |
 | `ai.summary_enabled` | 是否生成 AI 摘要 | `true` |
 | `cron_schedule` | 定时调度表达式 | `*/30 * * * *` |
 | `platforms` | 启用的热榜平台列表 | 全部 11 个 |
+
+租户通过 Web 配置页提交的外部 RSS URL 会拒绝本地主机、私网和保留地址；RSSHub 路由默认只允许常用公开前缀。可通过 `RSSHUB_ALLOWED_PREFIXES=/prefix-a/,/prefix-b/` 显式扩展允许列表。
 
 ## 项目结构
 
 ```
 InfoHub/
-├── docker-compose.yml          # 服务编排（5 个容器）
+├── docker-compose.yml              # 服务编排（9 个服务）
+├── Dockerfile.api                   # API + 前端多阶段构建
+├── .env.example                     # 环境变量模板
+├── init-db.sh                       # PostgreSQL 初始化脚本
 ├── config/
-│   ├── config.yaml             # 核心配置
-│   ├── sources.yaml            # RSS 订阅源配置
-│   └── interests.txt           # 兴趣标签列表
+│   ├── config.yaml                  # 核心配置
+│   ├── sources.yaml                 # RSS 订阅源配置
+│   └── interests.txt                # 兴趣标签列表
 ├── orchestrator/
-│   ├── Dockerfile              # 编排层镜像
-│   ├── entrypoint.sh           # 启动脚本 + cron 调度
-│   ├── main.py                 # 主流程（10 步 pipeline）
-│   ├── config_loader.py        # 配置加载 + 环境变量解析
-│   ├── hotlist.py              # 多平台热榜抓取
-│   ├── miniflux_client.py      # Miniflux API 封装
-│   ├── ai_processor.py         # AI 筛选 / 摘要 / 翻译
-│   ├── dedup.py                # 跨源去重引擎
-│   ├── notifier.py             # 多渠道通知推送
-│   ├── exporter.py             # HTML 报告 + Obsidian 导出
-│   ├── db.py                   # SQLite 本地存储
-│   ├── models.py               # 数据模型
-│   └── requirements.txt        # Python 依赖
+│   ├── Dockerfile                   # 编排层镜像
+│   ├── entrypoint.sh                # 启动脚本（cron / api 双模式）
+│   ├── requirements.txt             # Python 依赖
+│   ├── main.py                      # 主流程（10 步 pipeline）
+│   ├── cron_runner.py               # croniter 定时调度
+│   ├── api.py                       # FastAPI REST API
+│   ├── config_loader.py             # 配置加载 + 环境变量解析
+│   ├── hotlist.py                   # 多平台热榜抓取
+│   ├── miniflux_client.py           # Miniflux API 封装
+│   ├── ai_processor.py              # AI 筛选 / 摘要 / 翻译
+│   ├── dedup.py                     # 跨源去重引擎
+│   ├── notifier.py                  # 多渠道通知推送
+│   ├── exporter.py                  # HTML 报告 + Obsidian 导出
+│   ├── db.py                        # PostgreSQL 数据存储
+│   └── models.py                    # 数据模型
+├── frontend/
+│   ├── package.json                 # 前端依赖（Bun 管理）
+│   ├── vite.config.ts               # Vite 构建配置
+│   ├── tailwind.config.js           # Tailwind CSS 配置
+│   └── src/
+│       ├── main.tsx                 # React 入口
+│       ├── App.tsx                  # 路由定义
+│       ├── api.ts                   # API 请求封装
+│       ├── types.ts                 # TypeScript 类型定义
+│       ├── components/
+│       │   ├── Layout.tsx           # 页面布局（侧边栏 + 顶栏）
+│       │   ├── StatCard.tsx         # 统计卡片组件
+│       │   └── NewsTable.tsx        # 新闻表格组件
+│       └── pages/
+│           ├── Dashboard.tsx        # 仪表盘
+│           ├── News.tsx             # 新闻列表
+│           ├── Runs.tsx             # 运行记录
+│           ├── Usage.tsx            # 用量统计
+│           └── Config.tsx           # 配置管理
 └── output/
-    ├── html/                   # HTML 报告输出
-    │   ├── latest/current.html # 最新一期报告
-    │   └── YYYY-MM-DD/         # 按日期归档
-    └── infohub.db              # SQLite 数据库
+    └── html/                        # HTML 报告输出
+        ├── latest/current.html      # 最新一期报告
+        └── YYYY-MM-DD/              # 按日期归档
 ```
 
 ## 处理流程
@@ -231,7 +320,7 @@ InfoHub/
 5. **AI 筛选** — 按兴趣标签分类评分，过滤低相关度内容
 6. **AI 翻译** — 英文 RSS 标题自动翻译为中文
 7. **AI 摘要** — 生成趋势分析和核心热点提炼
-8. **持久化** — 写入 SQLite，记录评分和标签
+8. **持久化** — 写入 PostgreSQL，记录评分和标签
 9. **输出分发** — 推送通知 + 生成 HTML 报告 + 导出 Obsidian 笔记
 10. **收尾** — 标记 Miniflux 已读，记录运行统计
 
@@ -239,13 +328,25 @@ InfoHub/
 
 | 组件 | 技术 |
 |------|------|
+| 前端 | React 18 + TypeScript + Tailwind CSS + Recharts |
+| 前端构建 | Vite（Docker 内使用 [Bun](https://bun.sh) 安装依赖并构建） |
+| API 层 | FastAPI + Uvicorn |
 | RSS 聚合 | Miniflux + RSSHub |
 | AI 引擎 | LiteLLM（兼容 DeepSeek / OpenAI / Claude 等） |
-| 数据库 | PostgreSQL（Miniflux）+ SQLite（本地存储） |
-| 缓存 | Redis（RSSHub 缓存层） |
-| 调度 | supercronic |
+| 数据库 | PostgreSQL 16（Miniflux + InfoHub 业务数据） |
+| 缓存 | Redis 7（Celery / 日志与 RSSHub 分离缓存） |
+| 调度 | croniter（Python 原生调度） |
+| Python 包管理 | [uv](https://github.com/astral-sh/uv)（Rust 实现，Docker 构建依赖安装） |
 | 容器化 | Docker Compose |
-| 语言 | Python 3.12 |
+| 语言 | Python 3.12 / TypeScript 5.6 |
+
+## 服务端口
+
+| 服务 | 端口 | 说明 |
+|------|------|------|
+| API + 前端 | `8500` | Web 管理面板和 REST API（仅绑定本机） |
+| Miniflux | `8480` | RSS 聚合管理界面（仅绑定本机） |
+| RSSHub | 未暴露 | 仅供内部服务访问 |
 
 ## 常见问题
 
@@ -267,6 +368,20 @@ InfoHub/
 **Q: 如何只用 RSS 不用热榜？**
 
 将 `config/config.yaml` 中的 `platforms` 设为空列表 `[]`。
+
+**Q: Docker 构建很慢怎么办？**
+
+项目已使用 [uv](https://github.com/astral-sh/uv)（Python）和 [Bun](https://bun.sh)（Node.js）替代 pip 和 npm，Docker 构建时依赖安装速度大幅提升。如果仍然很慢，检查网络连接或配置 Docker 镜像加速。
+
+**Q: 上线前如何做最小验证？**
+
+```bash
+PYTHONPATH=orchestrator uv run --with-requirements orchestrator/requirements-dev.txt pytest -q orchestrator/tests
+bun --cwd frontend install --frozen-lockfile
+bun --cwd frontend run build
+REDIS_RSSHUB_PASSWORD=validation-password docker compose config --quiet
+REDIS_RSSHUB_PASSWORD=validation-password docker compose -f docker-compose.private.yml config --quiet
+```
 
 ## License
 

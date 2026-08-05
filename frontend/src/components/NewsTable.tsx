@@ -1,4 +1,5 @@
 import type { NewsItem } from '../types';
+import { formatTime } from '../tz';
 
 interface Props {
   items: NewsItem[];
@@ -25,12 +26,12 @@ export default function NewsTable({ items, compact }: Props) {
       <table className="w-full text-xs">
         <thead>
           <tr className="bg-header-bg text-left text-accent text-xs uppercase">
-            <th className="px-2 py-1">Title</th>
-            <th className="px-2 py-1">Source</th>
-            {!compact && <th className="px-2 py-1">Type</th>}
-            <th className="px-2 py-1">Score</th>
-            {!compact && <th className="px-2 py-1">Tags</th>}
-            <th className="px-2 py-1">Time</th>
+            <th className="px-2 py-1">标题</th>
+            <th className="px-2 py-1">来源</th>
+            {!compact && <th className="px-2 py-1">类型</th>}
+            <th className="px-2 py-1">评分</th>
+            {!compact && <th className="px-2 py-1">标签</th>}
+            <th className="px-2 py-1">时间</th>
           </tr>
         </thead>
         <tbody>
@@ -55,14 +56,14 @@ export default function NewsTable({ items, compact }: Props) {
               </td>
               {!compact && <td className="px-2 py-1 text-accent/50 truncate max-w-[120px]">{n.tags}</td>}
               <td className="px-2 py-1 text-accent/50 whitespace-nowrap">
-                {n.created_at.replace('T', ' ').slice(0, 16)}
+                {formatTime(n.created_at)}
               </td>
             </tr>
           ))}
           {items.length === 0 && (
             <tr>
               <td colSpan={6} className="py-4 text-center text-accent/50">
-                NO DATA
+                暂无数据
               </td>
             </tr>
           )}

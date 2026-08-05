@@ -8,18 +8,55 @@
   border-radius: 0 !important;
 }
 
+:root {
+  color-scheme: dark;
+  --color-bg: 0 0 0;
+  --color-card: 10 10 10;
+  --color-border: 51 51 51;
+  --color-accent: 255 140 0;
+  --color-text: 255 140 0;
+  --color-muted: 255 140 0;
+  --color-positive: 0 255 0;
+  --color-negative: 255 0 0;
+  --color-link: 0 255 255;
+  --color-header-bg: 26 26 26;
+  --chart-bg-top: #0a0a0a;
+  --chart-bg-bottom: #000000;
+  --chart-grid: #1a1a1a;
+  --chart-axis: #666666;
+}
+
+:root[data-theme='day'] {
+  color-scheme: light;
+  --color-bg: 244 246 248;
+  --color-card: 255 255 255;
+  --color-border: 203 210 218;
+  --color-accent: 180 83 9;
+  --color-text: 31 41 55;
+  --color-muted: 75 85 99;
+  --color-positive: 22 101 52;
+  --color-negative: 185 28 28;
+  --color-link: 3 105 161;
+  --color-header-bg: 232 236 241;
+  --chart-bg-top: #ffffff;
+  --chart-bg-bottom: #f4f6f8;
+  --chart-grid: #dbe1e7;
+  --chart-axis: #4b5563;
+}
+
 body {
   margin: 0;
   font-family: 'JetBrains Mono', Consolas, monospace;
-  background: #000000;
-  color: #FF8C00;
+  background: rgb(var(--color-bg));
+  color: rgb(var(--color-text));
+  transition: background-color 160ms ease, color 160ms ease;
 }
 
 /* scrollbar */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
-::-webkit-scrollbar-track { background: #000000; }
-::-webkit-scrollbar-thumb { background: #333333; }
-::-webkit-scrollbar-thumb:hover { background: #555555; }
+::-webkit-scrollbar-track { background: rgb(var(--color-bg)); }
+::-webkit-scrollbar-thumb { background: rgb(var(--color-border)); }
+::-webkit-scrollbar-thumb:hover { background: rgb(var(--color-muted) / 0.6); }
 
 /* Bloomberg panel components */
 @layer components {
@@ -39,7 +76,7 @@ body {
   display: inline-block;
   width: 8px;
   height: 8px;
-  background: #00FF00;
+  background: rgb(var(--color-positive));
   animation: blink 1s step-end infinite;
 }
 

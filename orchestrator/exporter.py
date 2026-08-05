@@ -1,6 +1,8 @@
 """HTML 报告 + Obsidian 知识库导出"""
 
+import os
 import logging
+import tempfile
 from html import escape
 from pathlib import Path
 from datetime import datetime
@@ -8,8 +10,30 @@ from typing import List, Dict
 from collections import Counter
 
 from models import NewsItem
+from url_security import UnsafeUrlError, validate_http_url_syntax
 
 log = logging.getLogger("infohub.export")
+
+
+def _atomic_write(filepath: Path, content: str):
+    """原子写入：先写临时文件，再 rename，防止并发写入损坏"""
+    filepath.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_path = tempfile.mkstemp(
+        dir=str(filepath.parent), suffix=".tmp", prefix=".write_"
+    )
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(content)
+        # Windows 需要先删除目标文件
+        if os.name == "nt" and filepath.exists():
+            filepath.unlink()
+        os.replace(tmp_path, str(filepath))
+    except Exception:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise
 
 
 class ObsidianExporter:
@@ -70,8 +94,11 @@ def _group_by_tag(items: List[NewsItem]) -> Dict[str, List[NewsItem]]:
 class HTMLExporter:
     """生成 HTML 交互报告 — 带目录、筛选、统计卡片"""
 
-    def __init__(self, output_dir: str):
-        self.output_dir = Path(output_dir) / "html"
+    def __init__(self, output_dir: str, tenant_id: str = ""):
+        base = Path(output_dir) / "html"
+        if tenant_id:
+            base = base / tenant_id
+        self.output_dir = base
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
     def generate(self, items: List[NewsItem], now: datetime,
@@ -102,7 +129,7 @@ class HTMLExporter:
         filepath.write_text(html, encoding="utf-8")
         latest_dir = self.output_dir / "latest"
         latest_dir.mkdir(exist_ok=True)
-        (latest_dir / "current.html").write_text(html, encoding="utf-8")
+        _atomic_write(latest_dir / "current.html", html)
         log.info(f"HTML 报告: {filepath}")
 
     def _stats_html(self, items, by_tag, sources):
@@ -151,7 +178,11 @@ class HTMLExporter:
                 score_pct = f'{it.score:.0%}' if it.score else '—'
                 title_safe = escape(it.title)
                 source_safe = escape(it.source)
-                url_safe = escape(it.url) if it.url else ""
+                try:
+                    safe_url = validate_http_url_syntax(it.url) if it.url else ""
+                except UnsafeUrlError:
+                    safe_url = ""
+                url_safe = escape(safe_url) if safe_url else ""
                 link = (f'<a href="{url_safe}" target="_blank" '
                         f'rel="noopener">{title_safe}</a>'
                         if url_safe else title_safe)

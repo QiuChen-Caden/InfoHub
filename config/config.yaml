@@ -1,6 +1,7 @@
+timezone: Asia/Shanghai
 ai:
   api_base: ''
-  api_key: sk-e467146b9f954be2aad5f2d955451bac
+  api_key: ''
   batch_interval: 2
   batch_size: 200
   max_tokens: 5000
@@ -9,7 +10,7 @@ ai:
   summary_enabled: true
   timeout: 120
 cron_schedule: '*/30 * * * *'
-miniflux_api_key: 96551dff06c68bcbeb404ef90f4023151af2dfcbb457794aae2ae2080aa69dce
+miniflux_api_key: ''
 miniflux_url: http://miniflux:8080
 notification:
   batch_interval: 2

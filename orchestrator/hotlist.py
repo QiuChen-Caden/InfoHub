@@ -38,6 +38,7 @@ PLATFORMS = {
 def fetch_platform(platform_id: str, timeout: int = 10,
                    max_retries: int = 2) -> List[dict]:
     """抓取单个平台，带重试和退避"""
+    t0 = time.time()
     for attempt in range(max_retries + 1):
         try:
             resp = requests.get(
@@ -46,13 +47,23 @@ def fetch_platform(platform_id: str, timeout: int = 10,
                 headers=HEADERS,
                 timeout=timeout,
             )
+            if not resp.ok:
+                log.warning(f"{platform_id} HTTP {resp.status_code}")
+                if attempt < max_retries:
+                    wait = random.uniform(3, 5) + attempt * random.uniform(1, 2)
+                    time.sleep(wait)
+                    continue
+                return []
             data = resp.json()
             if data.get("items"):
-                return data["items"]
+                items = data["items"]
+                elapsed = time.time() - t0
+                log.info(f"{platform_id} 抓取 {len(items)} 条, 耗时 {elapsed:.1f}s")
+                return items
         except Exception as e:
             if attempt < max_retries:
                 wait = random.uniform(3, 5) + attempt * random.uniform(1, 2)
-                log.debug(f"{platform_id} 重试 {attempt+1}, 等待 {wait:.1f}s")
+                log.info(f"{platform_id} 重试 {attempt+1}, 等待 {wait:.1f}s")
                 time.sleep(wait)
             else:
                 log.warning(f"{platform_id} 抓取失败: {e}")
@@ -64,6 +75,8 @@ def fetch_all_hotlists(enabled_platforms: List[str] = None) -> List[NewsItem]:
     platforms = enabled_platforms or list(PLATFORMS.keys())
     items = []
     success, failed = [], []
+
+    log.info(f"热榜抓取开始: {len(platforms)} 个平台")
 
     for pid in platforms:
         raw = fetch_platform(pid)
@@ -86,5 +99,5 @@ def fetch_all_hotlists(enabled_platforms: List[str] = None) -> List[NewsItem]:
         # 请求间隔 100ms + 抖动
         time.sleep(0.1 + random.uniform(0.01, 0.02))
 
-    log.info(f"成功: {success}, 失败: {failed}")
+    log.info(f"热榜抓取完成: 成功 {len(success)}/{len(platforms)} 个平台, 共 {len(items)} 条, 成功: {success}, 失败: {failed}")
     return items
